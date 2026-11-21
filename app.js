@@ -253,9 +253,12 @@
     if (hs.fqi58g && toks.some(function (t) { return /^194[5-9]$/.test(t); })) return true;
     return HIDE_SETS.some(function (set) { return set.every(function (h) { return hs[h]; }); });
   }
+  /* Hidden from Son (same list as the server's HIDE_FROM_SON) */
+  var SON_HIDE_RE = /\b(playboy|nude|naked|nudie|topless|xxx|adults? only|over 18s)\b/i;
+  function sonHidden(name) { return SON_HIDE_RE.test(String(name || '')); }
   /* Son's mode also leaves out anything Christmassy or gift-related, to be safe */
   function kidSafe(it) {
-    if (!it || neverShow(it.name)) return false;
+    if (!it || neverShow(it.name) || sonHidden(it.name)) return false;
     var t = [it.name, it.range, it.series].join(' ');
     return !/christmas|xmas|x-mas|secret|gift|present|santa/i.test(t);
   }
@@ -648,7 +651,8 @@
     if (S.boot && !force) return Promise.resolve(S.boot);
     busy('Getting the collection\u2026');
     return call('getBootstrap', S.kid ? KID_ROLE : S.role).then(function (b) {
-      b.items = (b.items || []).filter(function (it) { return !neverShow(it.name); });
+      var privNow = isPriv() && !S.kid;
+      b.items = (b.items || []).filter(function (it) { return !neverShow(it.name) && (privNow || !sonHidden(it.name)); });
       S.boot = b; S.items = b.items;
       return IDB.qAll().then(function (q) { NET.queueLen = q.length; q.forEach(applyQueued); }, noop).then(function () { done(); renderNetBar(); return b; });
     });
@@ -1366,7 +1370,7 @@ SCREENS.who = function () {
     busy('Getting the wanted list\u2026');
     call('getWanted', S.role).then(function (list) {
       done();
-      list = (list || []).filter(function (w) { return !neverShow(w.name); });
+      list = (list || []).filter(function (w) { return !neverShow(w.name) && (isPriv() || !sonHidden(w.name)); });
       S.homeWanted = list.slice();
       list = list.filter(function (w) { return w.deal; }).concat(list.filter(function (w) { return !w.deal; }));
       var deals = list.filter(function (w) { return w.deal; }).length;
