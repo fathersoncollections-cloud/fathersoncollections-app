@@ -59,9 +59,14 @@
     function db() {
       if (!dbp) dbp = new Promise(function (res, rej) {
         if (!window.indexedDB) return rej(new Error('no idb'));
-        var r = indexedDB.open('fatherson-app', 1);
-        r.onupgradeneeded = function () { r.result.createObjectStore('kv'); r.result.createObjectStore('queue', { keyPath: 'id', autoIncrement: true }); };
-        r.onsuccess = function () { res(r.result); };
+        var r = indexedDB.open('fatherson-app', 2);
+        r.onupgradeneeded = function () {
+          var d = r.result, have = d.objectStoreNames;
+          if (!have.contains('kv')) d.createObjectStore('kv');
+          if (!have.contains('queue')) d.createObjectStore('queue', { keyPath: 'id', autoIncrement: true });
+          if (!have.contains('thumbs')) d.createObjectStore('thumbs');   // v5: one small JPEG per item
+        };
+        r.onsuccess = function () { var d = r.result; d.onversionchange = function () { d.close(); }; res(d); };
         r.onerror = function () { rej(r.error); };
       });
       return dbp;
@@ -78,6 +83,18 @@
     return {
       get: function (k) { return tx('kv', 'readonly', function (s) { return s.get(k); }); },
       set: function (k, v) { return tx('kv', 'readwrite', function (s) { return s.put(v, k); }); },
+      del: function (k) { return tx('kv', 'readwrite', function (s) { return s.delete(k); }); },
+      tSet: function (k, v) { return tx('thumbs', 'readwrite', function (s) { return s.put(v, k); }); },
+      tDel: function (k) { return tx('thumbs', 'readwrite', function (s) { return s.delete(k); }); },
+      tAll: function () {
+        return db().then(function (d) {
+          return new Promise(function (res, rej) {
+            var out = {}, t = d.transaction('thumbs', 'readonly'), cur = t.objectStore('thumbs').openCursor();
+            cur.onsuccess = function () { var c = cur.result; if (c) { out[c.key] = c.value; c.continue(); } };
+            t.oncomplete = function () { res(out); }; t.onerror = function () { rej(t.error); };
+          });
+        });
+      },
       qAdd: function (v) { return tx('queue', 'readwrite', function (s) { return s.add(v); }); },
       qAll: function () { return tx('queue', 'readonly', function (s) { return s.getAll(); }); },
       qDel: function (id) { return tx('queue', 'readwrite', function (s) { return s.delete(id); }); }
@@ -229,18 +246,7 @@
   }
   window.addEventListener('online', function () { NET.ok(); syncQueue(); });
   window.addEventListener('offline', function () { NET.down(); });
-  /* thumbnails are kept on the phone too, so photos still show with no signal */
-  var thumbSaveTimer = null;
-  function saveThumbsSoon() {
-    clearTimeout(thumbSaveTimer);
-    thumbSaveTimer = setTimeout(function () {
-      var keep = {}; Object.keys(S.thumbs).forEach(function (k) { if (S.thumbs[k]) keep[k] = S.thumbs[k]; });
-      IDB.get('thumbs').then(function (old) { var m = old || {}; Object.keys(keep).forEach(function (k) { m[k] = keep[k]; }); return IDB.set('thumbs', m); }).catch(noop);
-    }, 1500);
-  }
-  function loadSavedThumbs() {
-    return IDB.get('thumbs').then(function (m) { Object.keys(m || {}).forEach(function (k) { if (S.thumbs[k] === undefined || S.thumbs[k] === null) S.thumbs[k] = m[k]; }); }).catch(noop);
-  }
+
 
   /* ================= v4: never-show list (extra safety on the phone; the server already hides these) ================= */
   function hz(s) { var x = 0x811c9dc5; for (var i = 0; i < s.length; i++) { x ^= s.charCodeAt(i); x = Math.imul(x, 16777619) >>> 0; } return x.toString(36); }
@@ -659,43 +665,193 @@
   }
   function itemByKey(key) { for (var i = 0; i < S.items.length; i++) if (S.items[i].key === key) return S.items[i]; return null; }
 
-  /* lazy thumbnails */
-  var thumbQueue = [], thumbTimer = null, observer = null;
+  /* ================= v5 thumbnails: small, cached on the phone, retried, tap to retry =================
+     Drive's thumbnails arrive at ~1280x1600 (~366 KB each as text). Each one is shrunk on the phone to a 320px
+     square JPEG (~15-25 KB), kept in its own IndexedDB entry, and (with Apps Script v4.2) handed back to the
+     server once so every later load is small. Only cards on screen are fetched, newest-visible first, a few
+     at a time, with a time limit and automatic retries; anything that still fails shows "Tap to retry". */
+  var TH = { at: {}, done: {}, fail: {}, busy: {}, queue: [], running: 0, small: null, timer: null };
+  var TH_MAX_TRIES = 3, TH_PARALLEL = 3, TH_TIMEOUT = 45000, TH_STALE = 3 * 864e5;
+  function thumbInner(fid) {
+    var t = S.thumbs[fid];
+    if (typeof t === 'string') return '<img alt="" decoding="async" src="' + t + '">';
+    if (t === null) return '\uD83D\uDCF7';
+    if ((TH.fail[fid] || 0) >= TH_MAX_TRIES) return '<span class="thRetry" data-act="thumbRetry" data-fid2="' + esc(fid) + '" role="button" aria-label="Photo didn\u2019t load. Tap to try again">\u21BB<small>Tap to retry</small></span>';
+    return '<span class="thWait" aria-label="Loading photo"></span>';
+  }
   function thumbHtml(it) {
     if (!it.folderId) return '<div class="thumb" data-nothumb>\uD83D\uDCF7</div>';
-    var t = S.thumbs[it.folderId];
-    if (t) return '<div class="thumb"><img alt="" src="' + t + '"></div>';
-    if (t === null) return '<div class="thumb">\uD83D\uDCF7</div>';
-    return '<div class="thumb" data-fid="' + esc(it.folderId) + '">\u23F3</div>';
+    return '<div class="thumb" data-fid="' + esc(it.folderId) + '">' + thumbInner(it.folderId) + '</div>';
   }
-  function watchThumbs() {
-    var els = document.querySelectorAll('[data-fid]');
-    if (!('IntersectionObserver' in window)) { els.forEach(function (el) { queueThumb(el.getAttribute('data-fid')); }); return; }
-    if (observer) observer.disconnect();
-    observer = new IntersectionObserver(function (entries) {
-      entries.forEach(function (en) { if (en.isIntersecting) { observer.unobserve(en.target); queueThumb(en.target.getAttribute('data-fid')); } });
-    }, { rootMargin: '300px' });
-    els.forEach(function (el) { observer.observe(el); });
+  function paintThumb(fid) {
+    document.querySelectorAll('[data-fid="' + fid + '"]').forEach(function (el) { el.innerHTML = thumbInner(fid); });
+  }
+  function thumbNeeded(fid) {
+    if (!fid || TH.busy[fid] || TH.queue.indexOf(fid) >= 0) return false;
+    if ((TH.fail[fid] || 0) >= TH_MAX_TRIES) return false;
+    var t = S.thumbs[fid];
+    if (t === null) return false;
+    if (typeof t === 'string') return !TH.done[fid] && Date.now() - (TH.at[fid] || 0) > TH_STALE;   // quiet re-check
+    return true;
   }
   function queueThumb(fid) {
-    if (!fid || S.thumbs[fid] !== undefined || thumbQueue.indexOf(fid) >= 0) return;
-    thumbQueue.push(fid);
-    clearTimeout(thumbTimer); thumbTimer = setTimeout(flushThumbs, 150);
+    if (!thumbNeeded(fid)) return;
+    TH.queue.push(fid);
+    clearTimeout(TH.timer); TH.timer = setTimeout(pumpThumbs, 120);
   }
-  function flushThumbs() {
-    var batch = thumbQueue.splice(0, 24);
-    if (!batch.length) return;
-    call('getThumbs', batch).then(function (res) {
-      Object.keys(res || {}).forEach(function (fid) {
-        S.thumbs[fid] = res[fid];
-        document.querySelectorAll('[data-fid="' + fid + '"]').forEach(function (el) {
-          el.removeAttribute('data-fid');
-          el.innerHTML = res[fid] ? '<img alt="" src="' + res[fid] + '">' : '\uD83D\uDCF7';
+  var observer = null;
+  function onScreen(el, pad) { var r = el.getBoundingClientRect(); return r.bottom > -pad && r.top < innerHeight + pad && r.width > 0; }
+  function watchThumbs() {
+    var els = document.querySelectorAll('[data-fid]');
+    if (!('IntersectionObserver' in window)) { els.forEach(function (el) { if (onScreen(el, 600)) queueThumb(el.getAttribute('data-fid')); }); return; }
+    if (observer) observer.disconnect();
+    observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) { if (en.isIntersecting) queueThumb(en.target.getAttribute('data-fid')); });
+    }, { rootMargin: '400px 0px' });
+    els.forEach(function (el) { observer.observe(el); });
+  }
+  /* safety net: after scrolling stops, anything on screen that still needs a photo is asked for */
+  var thScrollT = null;
+  function sweepThumbs() { document.querySelectorAll('[data-fid]').forEach(function (el) { if (onScreen(el, 400)) queueThumb(el.getAttribute('data-fid')); }); }
+  window.addEventListener('scroll', function () { clearTimeout(thScrollT); thScrollT = setTimeout(sweepThumbs, 250); }, { passive: true });
+  function pickThumbBatch(n) {
+    var vis = [], near = [];
+    TH.queue.forEach(function (fid) {
+      var el = document.querySelector('[data-fid="' + fid + '"]');
+      if (!el) return;                                   // no longer on the page: asked for again if it comes back
+      (onScreen(el, 50) ? vis : near).push(fid);
+    });
+    var all = vis.concat(near);
+    TH.queue = all.slice(n);
+    return all.slice(0, n);
+  }
+  function pumpThumbs() {
+    if (navigator.onLine === false) return;
+    while (TH.running < TH_PARALLEL && TH.queue.length) {
+      var batch = pickThumbBatch(TH.small === false ? 4 : 10);
+      if (!batch.length) break;
+      runThumbBatch(batch);
+    }
+  }
+  function withTimeout(p, ms) {
+    return new Promise(function (res, rej) {
+      var t = setTimeout(function () { var e = new Error('timeout'); e.timeout = true; rej(e); }, ms);
+      p.then(function (v) { clearTimeout(t); res(v); }, function (e) { clearTimeout(t); rej(e); });
+    });
+  }
+  function fetchThumbs(batch) {
+    /* straight to the API (not call()), so a slow photo never flips the whole app into "No signal" */
+    var old = function () { return rawCall('getThumbs', [batch, tokenNow()]).then(function (m) { return { thumbs: m || {}, big: {}, old: true }; }); };
+    if (TH.small === false) return old();
+    return rawCall('getThumbsSmall', [batch, tokenNow()]).then(function (r) {
+      if (!r || typeof r !== 'object' || !r.thumbs) throw new Error('bad reply');
+      TH.small = true; return r;
+    }, function (e) {
+      if (/unknown action/i.test((e && e.message) || '')) { TH.small = false; return old(); }   // Apps Script not updated yet
+      throw e;
+    });
+  }
+  function runThumbBatch(batch) {
+    TH.running++;
+    batch.forEach(function (f) { TH.busy[f] = 1; });
+    withTimeout(fetchThumbs(batch), TH_TIMEOUT).then(function (r) {
+      setTimeout(autoRetryThumbs, 0);   // the line works again: give failed photos on screen one more go
+      return Promise.all(batch.map(function (fid) {
+        if (!Object.prototype.hasOwnProperty.call(r.thumbs, fid)) { delete TH.busy[fid]; TH.queue.push(fid); return null; }  // server ran out of time: ask again
+        var v = r.thumbs[fid];
+        if (!v) {
+          delete TH.busy[fid]; TH.done[fid] = 1;
+          if (typeof S.thumbs[fid] !== 'string') { S.thumbs[fid] = null; paintThumb(fid); }
+          return null;
+        }
+        return shrinkThumb(v).then(function (small) {
+          delete TH.busy[fid];
+          if (!small) { thumbFailed(fid); return; }
+          S.thumbs[fid] = small; TH.at[fid] = Date.now(); TH.done[fid] = 1; delete TH.fail[fid];
+          IDB.tSet(fid, { d: small, at: TH.at[fid] }).catch(noop);
+          paintThumb(fid);
+          if (r.big && r.big[fid] && small !== v && small.length < 88000) rawCall('putThumbSmall', [fid, r.big[fid], small, '']).catch(noop);
         });
+      }));
+    }, function (e) {
+      batch.forEach(function (fid) { delete TH.busy[fid]; thumbFailed(fid, navigator.onLine === false); });
+    }).then(function () {
+      TH.running--; pumpThumbs();
+    }, function () { TH.running--; pumpThumbs(); });
+  }
+  function thumbFailed(fid, offline) {
+    if (typeof S.thumbs[fid] === 'string') { TH.done[fid] = 1; return; }      // keep the saved one
+    if (!offline) TH.fail[fid] = (TH.fail[fid] || 0) + 1;
+    if (offline || (TH.fail[fid] || 0) >= TH_MAX_TRIES) { if (offline) TH.fail[fid] = TH_MAX_TRIES; paintThumb(fid); return; }
+    setTimeout(function () { queueThumb(fid); }, 1500 * TH.fail[fid]);       // try again shortly
+  }
+  function autoRetryThumbs() {
+    TH.auto = TH.auto || {};
+    Object.keys(TH.fail).forEach(function (fid) {
+      if (TH.fail[fid] < TH_MAX_TRIES || TH.auto[fid]) return;
+      var el = document.querySelector('[data-fid="' + fid + '"]');
+      if (el && onScreen(el, 400)) { TH.auto[fid] = 1; retryThumb(fid); }
+    });
+  }
+  function retryThumb(fid) { delete TH.fail[fid]; delete TH.done[fid]; paintThumb(fid); queueThumb(fid); }
+  window.addEventListener('online', function () {
+    Object.keys(TH.fail).forEach(function (fid) { if (TH.fail[fid] >= TH_MAX_TRIES && document.querySelector('[data-fid="' + fid + '"]')) retryThumb(fid); });
+    pumpThumbs();
+  });
+  /* shrink a big thumbnail to a 320px square JPEG (what the card shows anyway) */
+  function shrinkThumb(src) {
+    return new Promise(function (res) {
+      if (src.length < 60000) return res(src);
+      var img = new Image();
+      img.onload = function () {
+        try {
+          var w = img.naturalWidth, h = img.naturalHeight, s = Math.min(w, h);
+          if (!s) return res(null);
+          var out = Math.min(320, s), c = document.createElement('canvas'); c.width = c.height = out;
+          c.getContext('2d').drawImage(img, (w - s) / 2, (h - s) / 2, s, s, 0, 0, out, out);
+          var d = c.toDataURL('image/jpeg', 0.75);
+          res(/^data:image\/jpeg/.test(d) && d.length < src.length ? d : src);
+        } catch (e) { res(src); }
+      };
+      img.onerror = function () { res(null); };
+      img.src = src;
+    });
+  }
+  /* kept on the phone (one entry per item), so photos show straight away and with no signal */
+  function loadSavedThumbs() {
+    return IDB.tAll().then(function (m) {
+      Object.keys(m || {}).forEach(function (k) {
+        var v = m[k]; if (!v || !v.d) return;
+        if (typeof S.thumbs[k] !== 'string') { S.thumbs[k] = v.d; TH.at[k] = v.at || 0; paintThumb(k); }
       });
-      saveThumbsSoon();
-      if (thumbQueue.length) flushThumbs();
-    }).catch(function () { batch.forEach(function (f) { S.thumbs[f] = null; }); });
+      migrateOldThumbs();
+    }).catch(noop);
+  }
+  /* v4 kept every big thumbnail in one huge entry; shrink them into the new store once, then drop it */
+  function migrateOldThumbs() {
+    IDB.get('thumbs').then(function (old) {
+      if (!old) return;
+      var keys = Object.keys(old), i = 0;
+      var next = function () {
+        if (i >= keys.length) { old = null; return IDB.del('thumbs').catch(noop); }
+        var k = keys[i++], v = old[k];
+        if (!v || typeof S.thumbs[k] === 'string') return next();
+        return shrinkThumb(v).then(function (small) {
+          if (small && typeof S.thumbs[k] !== 'string') { S.thumbs[k] = small; TH.at[k] = 0; paintThumb(k); return IDB.tSet(k, { d: small, at: 0 }).catch(noop); }
+        }).then(function () { return new Promise(function (r) { setTimeout(r, 30); }); }).then(next);
+      };
+      return next();
+    }).catch(noop);
+  }
+  function forgetThumb(fid) {
+    if (!fid) return;
+    delete S.thumbs[fid]; delete TH.at[fid]; delete TH.done[fid]; delete TH.fail[fid];
+    IDB.tDel(fid).catch(noop);
+  }
+  /* Refresh: keep showing what we have, but quietly re-check each photo as it comes on screen */
+  function thumbsRefresh() {
+    TH.done = {}; TH.fail = {}; TH.at = {}; TH.auto = {};
+    Object.keys(S.thumbs).forEach(function (k) { if (typeof S.thumbs[k] !== 'string') delete S.thumbs[k]; });
   }
 
   /* ---------------- camera + uploads ---------------- */
@@ -761,7 +917,7 @@
     }, Promise.resolve()).then(function () {
       done();
       toast(target.makeMain ? '\u2B50 New main photo saved. The old one is still in the folder.' : '\uD83C\uDF89 Saved ' + (n === 1 ? names[0] : n + ' files') + '. Nice one!', 'good');
-      var it = itemByKey(target.key); if (it && it.folderId) delete S.thumbs[it.folderId];
+      var it = itemByKey(target.key); if (it && it.folderId) forgetThumb(it.folderId);
       if (S.boot && S.boot.tiles.photos.next && S.boot.tiles.photos.next.key === target.key) S.boot = null;
       if (S.screen === 'item' || S.screen === 'kidItem') go(S.screen, S.params, true);
       else if (S.screen === 'photos' || S.screen === 'home') { S.boot = null; go(S.screen, S.params, true); }
@@ -803,7 +959,7 @@
       { label: 'Switch user', value: 'who' },
       { label: 'Got it, thanks', value: 'ok', cls: 'main' }
     ]).then(function (v) {
-      if (v === 'refresh') { S.boot = null; S.thumbs = {}; go(S.screen || 'home', S.params, true); }
+      if (v === 'refresh') { S.boot = null; thumbsRefresh(); go(S.screen || 'home', S.params, true); }
       if (v === 'guide') go('guide', { i: 0 });
       if (v === 'tour') { LS.set('tourPending', '1'); go('home', {}, true); }
       if (v === 'help') go('help');
@@ -1791,7 +1947,8 @@ SCREENS.who = function () {
     switch (a) {
       case 'back': back(); break;
       case 'go': if (el.getAttribute('data-to') === 'guide') { go('guide', { i: 0 }); break; } go(el.getAttribute('data-to'), { tab: el.getAttribute('data-tab') }); break;
-      case 'refresh': S.boot = null; S.thumbs = {}; go(S.screen, S.params, true); break;
+      case 'refresh': S.boot = null; thumbsRefresh(); go(S.screen, S.params, true); break;
+      case 'thumbRetry': retryThumb(el.getAttribute('data-fid2')); break;
       case 'guideNext': var i = +el.getAttribute('data-i'); if (i >= (S.guideCount || 5)) { LS.set('seenGuide', '1'); go(S.role ? 'home' : 'who', {}, true); } else go('guide', { i: i }, true); break;
       case 'guideSkip': LS.set('seenGuide', '1'); go(S.role ? 'home' : 'who', {}, true); break;
       case 'pickRole':
@@ -1849,7 +2006,7 @@ SCREENS.who = function () {
       case 'heroOpen': if (S.gallery && S.gallery.length) openPhoto(0); break;
       case 'makeMain':
         var ph = S.gallery[+el.getAttribute('data-i')]; busy('Making it the main photo\u2026');
-        call('setMainPhoto', S.current.key, S.current.name, ph.id).then(function () { done(); $('lightbox').hidden = true; if (S.current.folderId) delete S.thumbs[S.current.folderId]; toast('\u2B50 That\u2019s the main photo now', 'good'); go('item', S.params, true); }).catch(oops); break;
+        call('setMainPhoto', S.current.key, S.current.name, ph.id).then(function () { done(); $('lightbox').hidden = true; if (S.current.folderId) forgetThumb(S.current.folderId); toast('\u2B50 That\u2019s the main photo now', 'good'); go('item', S.params, true); }).catch(oops); break;
       case 'replaceMain': openCamera({ key: S.current.key, name: S.current.name, makeMain: true }); break;
       case 'togglePosted': togglePosted(el.getAttribute('data-p')); break;
       case 'postedMode': S.postedMode = el.getAttribute('data-v'); S.shownPosted = 60; go('posted', {}, true); break;
@@ -1888,7 +2045,7 @@ SCREENS.who = function () {
   $('stuckBtn').addEventListener('click', function () {
     if (!S.kid) return showHelp();
     sheet('How it works', '<ul><li>\uD83E\uDDF8 <b>Our stuff</b>: tap anything to see it big or add a photo.</li><li>\u2B50 <b>Hunt</b>: things we\u2019re looking for. Found one? Tap \u201CFound it!\u201D</li><li>\uD83D\uDCF7 <b>Scan</b>: point at a box\u2019s barcode to see if we\u2019ve got it.</li><li>No faces in photos - hands are fine.</li></ul>',
-      [{ label: '\u21BB Refresh', value: 'refresh' }, { label: 'Got it!', value: 'ok', cls: 'main' }]).then(function (v) { if (v === 'refresh') { S.boot = null; S.thumbs = {}; loadSavedThumbs(); go(S.screen || 'kid', S.params, true); } });
+      [{ label: '\u21BB Refresh', value: 'refresh' }, { label: 'Got it!', value: 'ok', cls: 'main' }]).then(function (v) { if (v === 'refresh') { S.boot = null; thumbsRefresh(); go(S.screen || 'kid', S.params, true); } });
   });
   $('homeBtn').addEventListener('click', function () { if (S.kid) { S.history = []; go('kid', {}, true); return; } if (S.role) { S.history = []; go(S.screen === 'home' ? 'settings' : 'home', {}, true); } });
   $('camInput').addEventListener('change', onFiles);
