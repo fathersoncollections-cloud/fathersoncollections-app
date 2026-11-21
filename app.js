@@ -209,8 +209,18 @@
   }
   // mode: falsy = camera (photo), 'video' = camera (video), anything else = gallery
   function openCamera(target, mode) {
+    if (!mode) {   // every "Take photo" asks: camera or gallery
+      return sheet('\uD83D\uDCF7 Add a photo', '<p class="hint">Snap it now, or pick one you already took.</p>', [
+        { label: '\uD83D\uDCF7 Take photo (camera)', value: 'camera', cls: 'main' },
+        { label: '\uD83D\uDDBC\uFE0F Choose from gallery', value: 'gallery' },
+        { label: 'Cancel', value: '' }
+      ]).then(function (v) { if (v) openInput(target, v === 'camera' ? 'camera' : 'gallery'); });
+    }
+    openInput(target, mode);
+  }
+  function openInput(target, mode) {
     S.camTarget = target;
-    var inp = mode === 'video' ? $('vidInput') : mode ? $('pickInput') : $('camInput');
+    var inp = mode === 'video' ? $('vidInput') : mode === 'camera' ? $('camInput') : $('pickInput');
     inp.value = '';
     inp.click();
   }
@@ -840,6 +850,8 @@ SCREENS.who = function () {
     setMain(backBtn() + '<h1>Settings</h1><div class="card stack">' +
       '<p>Using it as: <b>' + esc(S.role) + '</b></p><button class="btn full" data-act="go" data-to="who">Switch user</button>' +
       (THEME.needsPin && isPriv() ? '<button class="btn full" data-act="lockPriv">\uD83D\uDD12 Lock ' + esc(PRIV) + ' view</button>' : '') +
+      (THEME.generic && isPriv() ? '<a class="btn yel full" href="?settings=1">\u2699\uFE0F Change name, colours, people</a>' : '') +
+      (THEME.generic ? '<a class="btn full" href="?reset=1">\uD83D\uDD0C Connect a different collection</a>' : '') +
       '<button class="btn full" data-act="startTour">\uD83E\uDDED Take the tour again</button>' +
       '<button class="btn full" data-act="go" data-to="guide">Show the welcome cards</button>' +
       '<button class="btn full" data-act="go" data-to="help">\u2753 Help topics</button>' +
