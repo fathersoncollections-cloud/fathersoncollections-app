@@ -340,6 +340,47 @@
     margin: 8px 22px 22px; width: calc(100% - 44px); min-height: 64px; font-size: 22px;
     background: #FED90F !important; border-width: 4px; box-shadow: 0 5px 0 #13294B;
   }
+  .noteWrap {
+    position: fixed; inset: 0; z-index: 49; background: #70CCF5;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: calc(16px + env(safe-area-inset-top, 0px)) 18px calc(24px + env(safe-area-inset-bottom, 0px));
+    box-sizing: border-box; overflow: auto; -webkit-overflow-scrolling: touch;
+    height: 100vh; height: 100dvh; width: 100%;
+  }
+  .notePage {
+    width: 100%; max-width: 360px; margin: auto; background: #FBF6E8;
+    border: 4px solid #13294B; box-shadow: 0 10px 0 #13294B, 0 18px 28px rgba(19,41,75,.25);
+    color: #13294B; display: flex; flex-direction: column;
+    box-sizing: border-box; flex: 0 1 auto; min-height: 0; max-height: 100%; overflow: hidden;
+  }
+  .noteInner {
+    padding: 22px 22px 8px; flex: 1 1 auto; min-height: 0;
+    overflow-x: hidden; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+  .noteInner #noteBody {
+    font-family: Georgia, "Iowan Old Style", "Palatino Linotype", Palatino, serif;
+    font-size: 22px; line-height: 1.45; text-align: center; margin: 8px 0 12px;
+  }
+  .noteInner #noteSign { margin-top: 4px; }
+  .noteLi {
+    display: block; width: 100%; text-align: left; background: #FBF6E8; color: #13294B;
+    border: 4px solid #13294B; border-radius: 20px; padding: 14px 16px; margin: 0 0 12px;
+    font-family: inherit; cursor: pointer;
+    box-shadow: 0 4px 0 #13294B;
+  }
+  .noteLi p { font-family: Georgia, "Iowan Old Style", Palatino, serif; font-size: 18px; line-height: 1.45; margin: 0 0 6px; }
+  .noteLi .noteLiSign { text-align: right; font-weight: 700; font-size: 18px; margin: 8px 0 0; }
+  .funWorth {
+    display: block; width: 100%; margin: 14px 0 0; padding: 16px 16px 14px;
+    background: #FBF6E8; color: #13294B; border: 4px solid #13294B; border-radius: 24px;
+    box-shadow: 0 6px 0 #13294B; font-family: inherit; cursor: pointer; text-align: center;
+  }
+  .funWorth .funLabel { font-weight: 900; font-size: 15px; margin: 0 0 8px; letter-spacing: .02em; }
+  .funWorth .funEmojis { font-size: 36px; line-height: 1.15; letter-spacing: 2px; margin: 4px 0 10px; }
+  .funWorth .funLine { font-weight: 900; font-size: 22px; line-height: 1.25; margin: 0 0 6px; }
+  .funWorth .funHint { font-size: 14px; font-weight: 700; opacity: .75; margin: 0; }
+
   .kbig.paper { background: #FBF6E8; min-height: 110px; }
   .kbig.paper span { font-size: 36px; }
   .ptsCard .big { font-size: 48px; }
@@ -410,12 +451,23 @@
     </article>
   </div>
 
+  <div id="dadNote" class="noteWrap" hidden>
+    <article class="notePage" role="dialog" aria-modal="true" aria-labelledby="noteTitle">
+      <div class="letterBar" id="noteTitle">A note from Dad</div>
+      <div class="noteInner">
+        <p id="noteBody"></p>
+        <div class="letterSign" id="noteSign"><p class="dad">Dad x</p></div>
+      </div>
+      <button type="button" class="btn yel letterGo" data-act="noteGo">Aww thanks!</button>
+    </article>
+  </div>
+
   
   <script>
   (function () {
     'use strict';
     var API = "https://script.google.com/macros/s/AKfycbwSO6lF3RuWl0oihI0plwrpb2UKTVDG699nbfXpsiD9y-ZIlRxf44L4SZgw7whRzpeF/exec";
-    var VER = "v7d-20261121";
+    var VER = "v7e-20261121";
     // Plain fetch with no cookies, so Google's multi-account sign-in never gets involved.
     function post(fn, args) {
       return fetch(API, {

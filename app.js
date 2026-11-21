@@ -660,6 +660,7 @@
       return true;
     }
     if (overlayOpen('lightbox')) { $('lightbox').hidden = true; return true; }
+    if (overlayOpen('dadNote')) { hideDadNote(); return true; }
     if (overlayOpen('dadLetter')) { hideDadLetter(); return true; }
     var tour = $('tour');
     if (tour && !tour.hidden) { var done = !!NAV.tourFinished; NAV.tourFinished = false; closeTour(done); return true; }
@@ -1092,13 +1093,14 @@
 
   /* ================= v4: Son's mode (big tiles, photos, no money, nothing Christmassy) ================= */
   var KID_ROLE = THEME.roles.filter(function (r) { return r !== PRIV; })[0] || 'Son';
-  var KID_SCREENS = ['kid', 'kidStuff', 'kidItem', 'kidHunt', 'kidBadges', 'kidRewards', 'pin', 'add'];
+  var KID_SCREENS = ['kid', 'kidStuff', 'kidItem', 'kidHunt', 'kidBadges', 'kidRewards', 'kidNotes', 'pin', 'add'];
   function enterKid() {
     LS.set('kidPrevRole', S.role || '');
     clearDadToken();                    // money needs the PIN again after Son's mode
     S.kid = true; LS.set('kidMode', '1');
     S.role = KID_ROLE; LS.set('role', KID_ROLE);
     S.boot = null; S.items = []; S.homeWanted = null; S.history = []; S.add = null;
+    S.kidGreeting = true;
     go('kid', {}, true);
   }
   function exitKid() {
@@ -1132,8 +1134,10 @@
         '<button class="kbig green" data-act="kidNew"><span>\u2795</span><b>New find!</b><small>snap it and save it</small></button>' +
         '<button class="kbig yel kwide" data-act="go" data-to="kidRewards"><span>\u2B50</span><b>My points</b><small id="kidPtsN">earn rewards!</small></button>' +
         '<button class="kbig pinkL kwide" data-act="go" data-to="kidBadges"><span>\uD83C\uDFC6</span><b>My badges</b><small id="kidBadgeN">see what you\u2019ve earned</small></button>' +
-        '<button class="kbig paper kwide" data-act="letterOpen"><span>\u2709\uFE0F</span><b>Letter from Dad</b><small>How it all started</small></button>' +
+        '<button class="kbig paper" data-act="letterOpen"><span>\u2709\uFE0F</span><b>Letter from Dad</b><small>How it all started</small></button>' +
+        '<button class="kbig paper" data-act="notesOpen"><span>\uD83D\uDCDD</span><b>Notes from Dad</b><small>little messages</small></button>' +
         '</div>' +
+        funWorthHtml() +
         '<div class="center" style="margin-top:18px"><button class="btn small" data-act="kidExit">\uD83D\uDD13 Grown-ups: full app</button></div>';
       setMain(h);
       bindOwnSearch('kidSearch', 'kidOwnOut');
@@ -1243,8 +1247,131 @@
   }
   function maybeShowLetter() {
     if (!S.kid) return;
-    if (LS.get('kidLetterDay') === londonDay()) return;
-    showDadLetter(false);
+    var greeting = !!S.kidGreeting;
+    S.kidGreeting = false;
+    if (LS.get('kidLetterDay') !== londonDay()) { showDadLetter(false); return; }
+    if (greeting) showDadNote();
+  }
+
+  var DAD_NOTES = [
+    'Proud of you, wee man. Always.',
+    'Remember the loft? Best day ever. Dad x',
+    'Every shelf in this house has a bit of you on it.',
+    'Gentle hands with the boxes. Some of these are older than me!',
+    "You've got a better eye for a bargain than I do.",
+    "Win or lose on eBay, we're a team.",
+    'Homer would be proud. So am I.',
+    'Got a new photo to take? Go get it, Collector Pro!',
+    'The best thing in this collection is you.',
+    'Saturday mornings with you are my favourite.',
+    "Keep being curious. That's what real collectors do.",
+    'Come Up The Dons! Now go find a Simpsons treasure.',
+    'Love you more than Homer loves donuts. Dad x',
+    "One day this'll all be yours. Look after it like we did together.",
+    'Thanks for being my best collecting buddy.'
+  ];
+  function noteHasSign(t) { return /(?:^|\s)Dad x\s*$/.test(String(t || '')); }
+  function notesSeen() {
+    try {
+      var a = JSON.parse(LS.get('kidNotesSeen') || '[]');
+      return Array.isArray(a) ? a.map(Number).filter(function (n) { return n >= 0 && n < DAD_NOTES.length; }) : [];
+    } catch (e) { return []; }
+  }
+  function nextNoteIndex() {
+    var seen = notesSeen();
+    if (seen.length >= DAD_NOTES.length) { LS.set('kidNotesSeen', '[]'); seen = []; }
+    for (var i = 0; i < DAD_NOTES.length; i++) if (seen.indexOf(i) < 0) return i;
+    return 0;
+  }
+  function markNoteSeen(i) {
+    var a = notesSeen();
+    if (a.indexOf(i) < 0) a.push(i);
+    LS.set('kidNotesSeen', JSON.stringify(a));
+  }
+  function showDadNote(idx) {
+    var fromList = arguments.length > 0 && idx != null;
+    var i = fromList ? +idx : nextNoteIndex();
+    if (!(i >= 0 && i < DAD_NOTES.length)) return;
+    var el = $('dadNote'); if (!el) return;
+    var t = DAD_NOTES[i];
+    if ($('noteBody')) $('noteBody').textContent = t;
+    var sign = $('noteSign'); if (sign) sign.hidden = noteHasSign(t);
+    var wasOpen = !el.hidden;
+    el.hidden = false;
+    layerOpen(wasOpen);
+    if (!fromList) markNoteSeen(i);
+    try { var b = el.querySelector('[data-act="noteGo"]'); if (b) b.focus(); } catch (e) { /* ignore */ }
+  }
+  function hideDadNote() {
+    var el = $('dadNote'); if (el) el.hidden = true;
+  }
+  SCREENS.kidNotes = function () {
+    var h = backBtn() + '<h1>\uD83D\uDCDD Notes from Dad</h1><p class="hint">Little notes Dad leaves for you. The big letter is still under Letter from Dad.</p>' +
+      DAD_NOTES.map(function (t, i) {
+        return '<button type="button" class="noteLi" data-act="noteOpen" data-i="' + i + '"><p>' + esc(t) + '</p>' +
+          (noteHasSign(t) ? '' : '<p class="noteLiSign">Dad x</p>') + '</button>';
+      }).join('');
+    setMain(h);
+  }
+
+  var FUN_UNITS = [
+    { id: 'donkey', emoji: '\uD83E\uDECF', art: 'a', one: 'donkey', many: 'donkeys', gbp: 350 },
+    { id: 'dog', emoji: '\uD83D\uDC36', art: 'a', one: 'dog', many: 'dogs', gbp: 225 },
+    { id: 'icecream', emoji: '\uD83C\uDF66', art: 'an', one: 'ice cream', many: 'ice creams', gbp: 2.5 },
+    { id: 'cow', emoji: '\uD83D\uDC04', art: 'a', one: 'Highland cow', many: 'Highland cows', gbp: 1000 },
+    { id: 'cards', emoji: '\u26BD', art: 'a', one: 'Match Attax-style pack', many: 'Match Attax-style packs', gbp: 1.5 },
+    { id: 'tractor', emoji: '\uD83D\uDE9C', art: 'a', one: 'Massey Ferguson tractor', many: 'Massey Ferguson tractors', gbp: 20000 }
+  ];
+  function funTotalNum() {
+    var t = S.boot && S.boot.funTotal;
+    return t && typeof t.total === 'number' && isFinite(t.total) ? t.total : null;
+  }
+  function funUnitIndex() {
+    var i = parseInt(LS.get('kidFunUnit') || '0', 10);
+    if (!(i >= 0 && i < FUN_UNITS.length)) i = 0;
+    return i;
+  }
+  function funPhrase(n, u) {
+    var art = u.art || 'a', one = u.one, many = u.many;
+    var about = function (s) { return 'about ' + s; };
+    if (n >= 20) return about(Math.round(n).toLocaleString('en-GB') + ' ' + many);
+    if (n >= 2) {
+      var half = Math.round(n * 2) / 2;
+      if (half === Math.round(half)) return about(Math.round(half) + ' ' + many);
+      return about(Math.floor(half) + ' and a half ' + many);
+    }
+    if (n >= 1.25) return about('one and a half ' + many);
+    if (n >= 0.75) return about(art + ' ' + one);
+    if (n >= 0.4) return about('half ' + art + ' ' + one);
+    if (n >= 0.28) return about('a third of ' + art + ' ' + one);
+    if (n >= 0.15) return about('a quarter of ' + art + ' ' + one);
+    if (n > 0) return 'a little bit of ' + art + ' ' + one;
+    return 'a few treasures, and growing';
+  }
+  function funWorthHtml() {
+    if (!S.kid) return '';
+    var total = funTotalNum();
+    if (total == null) return '';
+    var u = FUN_UNITS[funUnitIndex()];
+    var count = u.gbp ? total / u.gbp : 0;
+    var nShow = count >= 1 ? Math.min(10, Math.max(1, Math.round(count))) : 1;
+    var em = '';
+    for (var i = 0; i < nShow; i++) em += u.emoji;
+    var line = 'Our collection is worth ' + funPhrase(count, u) + '! ' + u.emoji;
+    return '<button type="button" class="funWorth" data-act="funCycle" aria-label="What our collection is worth. Tap to change the unit.">' +
+      '<p class="funLabel">What\u2019s our collection worth?</p>' +
+      '<div class="funEmojis" aria-hidden="true">' + em + '</div>' +
+      '<p class="funLine">' + esc(line) + '</p>' +
+      '<p class="funHint">Tap to try a different one</p></button>';
+  }
+  function cycleFunWorth() {
+    if (funTotalNum() == null) return;
+    LS.set('kidFunUnit', String((funUnitIndex() + 1) % FUN_UNITS.length));
+    var btn = document.querySelector('.funWorth');
+    if (!btn) return;
+    var dummy = document.createElement('div');
+    dummy.innerHTML = funWorthHtml();
+    if (dummy.firstChild) btn.parentNode.replaceChild(dummy.firstChild, btn);
   }
 
   var RW = null;
@@ -2889,6 +3016,10 @@ SCREENS.who = function () {
       case 'syncNow': syncQueue(); break;
       case 'letterOpen': showDadLetter(true); break;
       case 'letterGo': if (NAV.pushed > 0) layerBack(); else hideDadLetter(); break;
+      case 'notesOpen': go('kidNotes'); break;
+      case 'funCycle': cycleFunWorth(); break;
+      case 'noteOpen': showDadNote(el.getAttribute('data-i')); break;
+      case 'noteGo': if (NAV.pushed > 0) layerBack(); else hideDadNote(); break;
       case 'rwAsk': askReward(el.getAttribute('data-id')); break;
       case 'rwYes': decideRewardUI(el.getAttribute('data-id'), true); break;
       case 'rwNo': decideRewardUI(el.getAttribute('data-id'), false); break;
@@ -2914,7 +3045,7 @@ SCREENS.who = function () {
   });
   $('stuckBtn').addEventListener('click', function () {
     if (!S.kid) return showHelp();
-    sheet('How it works', '<ul><li>\uD83E\uDDF8 <b>Our stuff</b>: tap anything to see it big or add a photo.</li><li>\u2B50 <b>Hunt</b>: things we\u2019re looking for. Found one? Tap \u201CFound it!\u201D</li><li>\uD83D\uDCF7 <b>Scan</b>: point at a box\u2019s barcode to see if we\u2019ve got it.</li><li>\u2709\uFE0F <b>Letter from Dad</b>: how it all started. It pops up once a day, and you can open it again any time.</li><li>\u2B50 <b>My points</b>: earn points and ask Dad for rewards.</li><li>No faces in photos - hands are fine.</li></ul>',
+    sheet('How it works', '<ul><li>\uD83E\uDDF8 <b>Our stuff</b>: tap anything to see it big or add a photo.</li><li>\u2B50 <b>Hunt</b>: things we\u2019re looking for. Found one? Tap \u201CFound it!\u201D</li><li>\uD83D\uDCF7 <b>Scan</b>: point at a box\u2019s barcode to see if we\u2019ve got it.</li><li>\u2709\uFE0F <b>Letter from Dad</b>: how it all started. It pops up once a day, and you can open it again any time.</li><li>\uD83D\uDCDD <b>Notes from Dad</b>: a little note on later visits, and all of them under Notes from Dad.</li><li>\uD83C\uDF66 <b>What\u2019s our collection worth?</b>: how many ice creams, dogs or tractors. Tap to change.</li><li>\u2B50 <b>My points</b>: earn points and ask Dad for rewards.</li><li>No faces in photos - hands are fine.</li></ul>',
       [{ label: '\u21BB Refresh', value: 'refresh' }, { label: 'Got it!', value: 'ok', cls: 'main' }]).then(function (v) { if (v === 'refresh') { S.boot = null; thumbsRefresh(); go(S.screen || 'kid', S.params, true); } });
   });
   $('homeBtn').addEventListener('click', function () { if (S.kid) { S.history = []; go('kid', {}, true); return; } if (S.role) { S.history = []; go(S.screen === 'home' ? 'settings' : 'home', {}, true); } });
@@ -2926,7 +3057,7 @@ SCREENS.who = function () {
   /* ---------------- start ---------------- */
   loadSavedThumbs();
   IDB.qAll().then(function (q) { NET.queueLen = q.length; renderNetBar(); if (q.length && navigator.onLine !== false) syncQueue(); }, noop);
-  if (S.kid) { S.role = KID_ROLE; go('kid', {}, true); }
+  if (S.kid) { S.role = KID_ROLE; S.kidGreeting = true; go('kid', {}, true); }
   else if (!LS.get('seenGuide')) go('guide', { i: 0 }, true);
   else if (!S.role) go('who', {}, true);
   else if (S.role === PRIV && THEME.needsPin && !dadUnlocked()) askDadPin(S.role);
