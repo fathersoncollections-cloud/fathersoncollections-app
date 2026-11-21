@@ -3,8 +3,8 @@
 
   /* ---------------- state ---------------- */
   var LS = {
-    get: function (k) { try { return localStorage.getItem('fs_' + k) || ''; } catch (e) { return ''; } },
-    set: function (k, v) { try { localStorage.setItem('fs_' + k, v); } catch (e) { /* private mode */ } }
+    get: function (k) { try { return localStorage.getItem((window.LS_PREFIX || 'fs_') + k) || ''; } catch (e) { return ''; } },
+    set: function (k, v) { try { localStorage.setItem((window.LS_PREFIX || 'fs_') + k, v); } catch (e) { /* private mode */ } }
   };
   var S = {
     role: LS.get('role'), boot: null, items: [], thumbs: {}, screen: '', params: {}, history: [],
@@ -207,9 +207,10 @@
       img.src = url;
     });
   }
-  function openCamera(target, gallery) {
+  // mode: falsy = camera (photo), 'video' = camera (video), anything else = gallery
+  function openCamera(target, mode) {
     S.camTarget = target;
-    var inp = gallery ? $('pickInput') : $('camInput');
+    var inp = mode === 'video' ? $('vidInput') : mode ? $('pickInput') : $('camInput');
     inp.value = '';
     inp.click();
   }
@@ -517,8 +518,9 @@ SCREENS.who = function () {
       var h = backBtn() + '<h1>' + esc(it.name) + '</h1>' +
         '<div id="hero" class="hero" data-act="heroOpen">' + (it.folderId ? '\u23F3' : '<span style="font-size:44px">\uD83D\uDCF7</span>') + '</div>' +
         '<div id="nudge"></div>' +
-        '<div class="stack" style="margin:12px 0"><button class="btn main full" data-act="snapCurrent">\uD83D\uDCF8 Add photo / video</button>' +
-        '<div class="row"><button class="btn" style="flex:1" data-act="pickCurrent">\uD83D\uDDBC\uFE0F From gallery</button><button class="btn" style="flex:1" data-act="replaceMain">\uD83D\uDD04 New main photo</button></div>' +
+        '<div class="stack" style="margin:12px 0"><button class="btn main full" data-act="snapCurrent">\uD83D\uDCF7 Take photo</button>' +
+        '<div class="row"><button class="btn" style="flex:1" data-act="pickCurrent">\uD83D\uDDBC\uFE0F From gallery</button><button class="btn" style="flex:1" data-act="videoCurrent">\uD83C\uDFA5 Record video</button></div>' +
+        '<div class="row"><button class="btn" style="flex:1" data-act="replaceMain">\uD83D\uDD04 New main photo</button></div>' +
         '<div class="row"><button class="btn yel" style="flex:1" data-act="edit">\u270F\uFE0F Edit details</button>' +
         (it.folderId ? '<a class="btn" style="flex:1" href="https://drive.google.com/drive/folders/' + esc(it.folderId) + '" target="_blank" rel="noopener">\uD83D\uDCC1 Folder \u2197</a>' : '') + '</div>' +
         (it.status === 'Wanted' || it.status === 'On order' ? '<button class="btn green full" data-act="gotItem">\u2705 Got it!</button>' : '') + '</div>' +
@@ -709,22 +711,42 @@ SCREENS.who = function () {
     busy('Getting the wanted list\u2026');
     call('getWanted', S.role).then(function (list) {
       done();
-      var h = '<h1>\u2B50 Wanted</h1><p class="hint">' + list.length + ' on the hunt list. Got one? Tap \u201CGot it\u201D.</p>' +
+      var h = '<h1>\u2B50 Wanted</h1>' +
+        '<div class="search"><input id="wantSearch" type="search" placeholder="\uD83D\uDD0D Search the wanted list" aria-label="Search wanted" autocomplete="off"></div>' +
+        '<p class="hint" id="wantCount">' + list.length + ' on the hunt list. Got one? Tap \u201CGot it\u201D.</p>' +
         '<div class="row" style="margin-bottom:10px"><button class="btn small" data-act="go" data-to="missing">\uD83E\uDDE9 Missing from sets</button><button class="btn small" data-act="go" data-to="checklists">\u2705 Checklists</button></div>' +
-        '<div class="search"><input id="wantSearch" type="search" placeholder="\uD83D\uDD0D Search the wanted list" aria-label="Search wanted"></div><div class="list" id="wantList">' +
+        '<div class="list" id="wantList">' +
         (list.length ? list.map(function (w, i) {
           return '<div class="li" data-wq="' + esc(norm(w.name + ' ' + w.range)) + '"><div class="grow">' + esc(w.name) + '<small>' + esc([w.range, w.conditionWanted, isPriv() && w.maxPrice ? 'max ' + w.maxPrice : ''].filter(Boolean).join(' \u00B7 ')) + '</small></div>' +
-            '<button class="btn green small" data-act="gotWanted" data-i="' + i + '">Got it</button></div>';
+            '<div class="stack" style="gap:6px"><button class="btn small" data-act="findCheapest" data-i="' + i + '">\uD83D\uDCB7 Find cheapest</button><button class="btn green small" data-act="gotWanted" data-i="' + i + '">Got it</button></div></div>';
         }).join('') : '<div class="nudge">Nothing on the wanted list right now.</div>') + '</div>' +
         '<p><button class="btn full" data-act="go" data-to="checklists">\u2705 Full-set checklists</button></p>';
       S.wantedList = list;
       setMain(h);
       $('wantSearch').addEventListener('input', function (e) {
         var q = norm(e.target.value);
-        document.querySelectorAll('#wantList [data-wq]').forEach(function (li) { li.hidden = q && li.getAttribute('data-wq').indexOf(q) < 0; });
+        var shown = 0;
+        document.querySelectorAll('#wantList [data-wq]').forEach(function (li) {
+          var words = q ? q.split(' ') : [], txt = li.getAttribute('data-wq'), hit = words.every(function (w) { return txt.indexOf(w) >= 0; });
+          li.hidden = !hit; if (hit) shown++;
+        });
+        $('wantCount').textContent = q ? shown + ' of ' + list.length + ' match \u201C' + e.target.value + '\u201D.' : list.length + ' on the hunt list. Got one? Tap \u201CGot it\u201D.';
       });
     }).catch(oops);
   };
+  /* Price-check links only (opens the shop's own search; nothing is bought or bid on). */
+  function findCheapest(i) {
+    var w = S.wantedList[i]; if (!w) return;
+    var q = encodeURIComponent(String(w.name || '').replace(/\s+/g, ' ').trim());
+    var links = [
+      ['\uD83D\uDED2 eBay UK - lowest price + postage', 'https://www.ebay.co.uk/sch/i.html?_nkw=' + q + '&_sop=15'],
+      ['\uD83D\uDCE6 Amazon UK - lowest price', 'https://www.amazon.co.uk/s?k=' + q + '&s=price-asc-rank'],
+      ['\uD83D\uDD0E Google Shopping', 'https://www.google.co.uk/search?tbm=shop&q=' + q]
+    ];
+    sheet('\uD83D\uDCB7 Find cheapest', '<p><b>' + esc(w.name) + '</b></p><p class="hint">Each one opens in a new tab. Check the condition and the postage before buying.</p><div class="stack">' +
+      links.map(function (l) { return '<a class="btn full" href="' + esc(l[1]) + '" target="_blank" rel="noopener">' + esc(l[0]) + ' \u2197</a>'; }).join('') + '</div>',
+      [{ label: 'Close', value: false }]);
+  }
   function gotWanted(i) {
     var w = S.wantedList[i]; if (!w) return;
     confirmSheet('Got it? \uD83C\uDF89', 'Move <b>' + esc(w.name) + '</b> into the collection as Owned? I\u2019ll give it a folder so you can snap it next.', 'Yes, got it!', 'Not yet').then(function (ok) {
@@ -1124,7 +1146,9 @@ SCREENS.who = function () {
       case 'snapFor': var it = itemByKey(key) || { key: key, name: '' }; openCamera({ key: key, name: it.name }); break;
       case 'valueFor': S.current = null; busy('Opening\u2026'); call('getItem', key, S.role).then(function (x) { done(); S.current = x; go('edit', { focus: 'value' }); }).catch(oops); break;
       case 'snapCurrent': openCamera({ key: S.current.key, name: S.current.name }); break;
-      case 'pickCurrent': openCamera({ key: S.current.key, name: S.current.name }, true); break;
+      case 'pickCurrent': openCamera({ key: S.current.key, name: S.current.name }, 'gallery'); break;
+      case 'videoCurrent': openCamera({ key: S.current.key, name: S.current.name }, 'video'); break;
+      case 'findCheapest': findCheapest(+el.getAttribute('data-i')); break;
       case 'edit': go('edit', {}); break;
       case 'saveEdit': saveEdit(); break;
       case 'gotItem':
@@ -1168,6 +1192,7 @@ SCREENS.who = function () {
   $('homeBtn').addEventListener('click', function () { if (S.role) { S.history = []; go(S.screen === 'home' ? 'settings' : 'home', {}, true); } });
   $('camInput').addEventListener('change', onFiles);
   $('pickInput').addEventListener('change', onFiles);
+  if ($('vidInput')) $('vidInput').addEventListener('change', onFiles);
   $('sheet').addEventListener('click', function (e) { if (e.target === $('sheet')) { /* tap outside: ignore so nothing is chosen by accident */ } });
 
   /* ---------------- start ---------------- */

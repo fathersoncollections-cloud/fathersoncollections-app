@@ -1,7 +1,7 @@
 /* FatherSon Collections phone app. The app files come from this site;
    collection data always comes live from the Apps Script API and is never cached here. */
-const CACHE = 'fatherson-app-v3-20261121b';
-const SHELL = ['./', './index.html', './app.js?v3-20261121b', './manifest.json',
+const CACHE = 'fatherson-app-v3b-20261121';
+const SHELL = ['./', './index.html', './app.js?v3b-20261121', './manifest.json',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'];
 
 self.addEventListener('install', (event) => {
@@ -10,7 +10,7 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+    caches.keys().then((keys) => Promise.all(keys.filter((k) => k.indexOf('fatherson-') === 0 && k !== CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });

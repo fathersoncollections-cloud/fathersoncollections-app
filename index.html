@@ -232,7 +232,8 @@
   <nav id="tabbar" aria-label="Main sections"></nav>
 
   <!-- One hidden camera input, reused by every "Take photo" button -->
-  <input id="camInput" type="file" accept="image/*,video/*" capture="environment" hidden>
+  <input id="camInput" type="file" accept="image/*" capture="environment" hidden>
+  <input id="vidInput" type="file" accept="video/*" capture="environment" hidden>
   <input id="pickInput" type="file" accept="image/*,video/*" multiple hidden>
 
   <div id="sheet" class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" hidden>
@@ -252,7 +253,7 @@
   (function () {
     'use strict';
     var API = "https://script.google.com/macros/s/AKfycbwSO6lF3RuWl0oihI0plwrpb2UKTVDG699nbfXpsiD9y-ZIlRxf44L4SZgw7whRzpeF/exec";
-    var VER = "v3-20261121b";
+    var VER = "v3b-20261121";
     // Plain fetch with no cookies, so Google's multi-account sign-in never gets involved.
     function post(fn, args) {
       return fetch(API, {
