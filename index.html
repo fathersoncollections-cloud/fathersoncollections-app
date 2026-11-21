@@ -103,6 +103,10 @@
   .thRetry { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; height: 100%; font-size: 28px; font-weight: 900; color: #555; background: repeating-linear-gradient(45deg, rgba(0,0,0,.03) 0 8px, transparent 8px 16px); cursor: pointer; }
   .thRetry small { font-size: 12px; font-weight: 800; margin-top: 2px; }
   .li .thRetry { font-size: 18px; } .li .thRetry small { display: none; }
+  .thNone { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; height: 100%; color: #6b7c87; background: repeating-linear-gradient(-45deg, rgba(255,255,255,.35) 0 10px, transparent 10px 20px); }
+  .thNone small { font-size: 12px; font-weight: 800; margin-top: 4px; letter-spacing: .2px; }
+  .li .thNone small { display: none; }
+  .ktile .thNone small { font-size: 14px; }
   .gname { padding: 8px 10px 10px; font-weight: 800; font-size: 14px; line-height: 1.25; }
   .gmeta { display: block; font-weight: 600; font-size: 12px; opacity: .75; margin-top: 2px; }
   .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; border: 2px solid var(--ink); background: var(--white); font-size: 13px; font-weight: 800; }
@@ -276,7 +280,69 @@
   .khuntCard { background: var(--white); border: 4px solid var(--ink); border-radius: 20px; padding: 14px; display: flex; flex-direction: column; gap: 6px; }
   .khuntCard b { font-size: 20px; } .khuntCard small { font-weight: 700; opacity: .75; }
   [hidden] { display: none !important; }
+
+
+  /* v7: letter from Dad + points / rewards */
+  @font-face {
+    font-family: "Luckiest Guy";
+    src: url("assets/LuckiestGuy-Regular.ttf") format("truetype");
+    font-weight: 400; font-style: normal; font-display: swap;
+  }
+  .letterWrap {
+    position: fixed; inset: 0; z-index: 48; background: #70CCF5;
+    display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+    padding: calc(10px + env(safe-area-inset-top)) 12px calc(16px + env(safe-area-inset-bottom));
+    overflow: auto; -webkit-overflow-scrolling: touch;
+  }
+  .letterPage {
+    width: 100%; max-width: 520px; margin: auto; background: #FBF6E8;
+    border: 4px solid #13294B; box-shadow: 0 10px 0 #13294B, 0 18px 28px rgba(19,41,75,.25);
+    color: #13294B; display: flex; flex-direction: column; min-height: min(92vh, 820px);
+  }
+  .letterBar {
+    background: #FED90F; color: #1A3A9C; font-family: "Luckiest Guy", "Arial Black", system-ui, sans-serif;
+    font-size: 15px; letter-spacing: .08em; text-align: center; padding: 10px 12px 8px;
+    border-bottom: 5px solid #1A3A9C; text-transform: uppercase;
+  }
+  .letterInner { padding: 22px 22px 8px; flex: 1 1 auto; }
+  .letterInner h1 {
+    font-family: "Luckiest Guy", "Arial Black", system-ui, sans-serif;
+    font-size: clamp(28px, 8vw, 40px); color: #1A3A9C; text-align: center;
+    line-height: 1.05; margin: 4px 0 18px; font-weight: 400;
+  }
+  .letterInner p { font-family: Georgia, "Iowan Old Style", "Palatino Linotype", Palatino, serif;
+    font-size: 17px; line-height: 1.55; margin: 0 0 14px; }
+  .letterSign { text-align: center; margin-top: 8px; }
+  .letterSign .love, .letterSign .dad {
+    font-family: Georgia, "Iowan Old Style", Palatino, serif; margin: 0;
+  }
+  .letterSign .love { font-size: 18px; }
+  .letterSign .dad { font-size: 22px; font-weight: 700; margin-top: 2px; }
+  .letterMum { font-family: Georgia, Palatino, serif; font-style: italic; text-align: center;
+    font-size: 15px; margin: 16px 0 8px; color: #3a4d6b; }
+  .letterLogo { display: block; width: 168px; height: auto; margin: 4px auto 8px;
+    border: 3px solid #13294B; border-radius: 14px; background: #fff; }
+  .letterGo {
+    margin: 8px 22px 22px; width: calc(100% - 44px); min-height: 64px; font-size: 22px;
+    background: #FED90F !important; border-width: 4px; box-shadow: 0 5px 0 #13294B;
+  }
+  .kbig.paper { background: #FBF6E8; min-height: 110px; }
+  .kbig.paper span { font-size: 36px; }
+  .ptsCard .big { font-size: 48px; }
+  .ptsBar { height: 16px; background: #fff; border: 3px solid var(--ink); border-radius: 999px; overflow: hidden; margin: 8px 0; }
+  .ptsBar > i { display: block; height: 100%; background: var(--green); }
+  .rwList { display: flex; flex-direction: column; gap: 10px; }
+  .rwItem { background: var(--white); border: 3px solid var(--ink); border-radius: 16px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .rwItem .row { justify-content: space-between; }
+  .qThumb { width: 100%; aspect-ratio: 1 / 1; background: var(--skyL); border: 3px solid var(--ink); border-radius: 14px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+  .qThumb img { width: 100%; height: 100%; object-fit: cover; }
+  .khero .thNone, .khero .thWait, .khero .thRetry { width: 100%; height: 100%; font-size: 48px; }
+  .rwLog { font-size: 15px; }
+  .rwLog .li { padding: 8px 10px; }
+  .addBc { margin-top: 12px; background: #fff; border: 3px solid var(--ink); border-radius: 16px; padding: 10px 12px; }
+  .addBcCode { font-size: 22px; font-weight: 900; letter-spacing: 1px; margin: 4px 0 8px; word-break: break-all; }
 </style>
+
 
   <style>
     #bootScreen{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center;background:#70CCF5;color:#13294B;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;z-index:50}
@@ -319,12 +385,20 @@
   <div id="toast" class="toast" role="status" hidden></div>
   <div id="busy" class="busy" hidden><div class="spinner"></div><div id="busyText">Just a sec…</div></div>
 
+  <div id="dadLetter" class="letterWrap" hidden>
+    <article class="letterPage" role="dialog" aria-modal="true" aria-labelledby="letterTitle">
+      <div class="letterBar">The FatherSon Simpsons Collection</div>
+      <div class="letterInner" id="letterInner"></div>
+      <button type="button" class="btn yel letterGo" data-act="letterGo">Let’s go!</button>
+    </article>
+  </div>
+
   
   <script>
   (function () {
     'use strict';
     var API = "https://script.google.com/macros/s/AKfycbwSO6lF3RuWl0oihI0plwrpb2UKTVDG699nbfXpsiD9y-ZIlRxf44L4SZgw7whRzpeF/exec";
-    var VER = "v6-20261121";
+    var VER = "v7-20261121";
     // Plain fetch with no cookies, so Google's multi-account sign-in never gets involved.
     function post(fn, args) {
       return fetch(API, {

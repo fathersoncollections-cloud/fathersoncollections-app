@@ -1,8 +1,9 @@
 /* FatherSon Collections phone app v4. The app files come from this site and are cached for offline use.
    Collection data comes live from the Apps Script API; the app keeps its own last copy in IndexedDB (not here). */
-const CACHE = 'fatherson-app-v6-20261121';
-const SHELL = ['./', './index.html', './app.js?v6-20261121', './manifest.json', './lib/zxing.min.js?v4',
-  './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'];
+const CACHE = 'fatherson-app-v7-20261121';
+const SHELL = ['./', './index.html', './app.js?v7-20261121', './manifest.json', './lib/zxing.min.js?v4',
+  './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png',
+  './assets/family.jpg', './assets/LuckiestGuy-Regular.ttf'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

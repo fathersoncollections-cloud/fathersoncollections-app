@@ -117,8 +117,8 @@
     return !!(e && (e.network || (e.name === 'TypeError' && /fetch|network|load failed/i.test(e.message || ''))));
   }
   function offlineErr() { return new Error('\uD83D\uDCF4 No signal right now, and this bit wasn\u2019t saved on the phone yet. It\u2019ll work again as soon as you\u2019re back online.'); }
-  var READ_FNS = { getBootstrap: 1, getWanted: 1, getChecklists: 1, getChecklist: 1, getItem: 1, getStats: 1, getAllMissing: 1, getPostedBoard: 1, getDuplicates: 1, getPhotoTodo: 1, getNoValue: 1, getValueSummary: 1, getItemPhotos: 1, getHistory: 1 };
-  var WRITE_FNS = { saveItem: 1, addItem: 1, markGotIt: 1, setPosted: 1, uploadMedia: 1, saveBarcode: 1, setMainPhoto: 1 };
+  var READ_FNS = { getBootstrap: 1, getWanted: 1, getChecklists: 1, getChecklist: 1, getItem: 1, getStats: 1, getAllMissing: 1, getPostedBoard: 1, getDuplicates: 1, getPhotoTodo: 1, getNoValue: 1, getValueSummary: 1, getItemPhotos: 1, getHistory: 1, getRewards: 1, getQueuePhoto: 1 };
+  var WRITE_FNS = { saveItem: 1, addItem: 1, markGotIt: 1, setPosted: 1, uploadMedia: 1, saveBarcode: 1, setMainPhoto: 1, requestReward: 1, decideReward: 1, saveRewards: 1, decidePhoto: 1 };
   function tokenNow() { return S.kid ? '' : (LS.get('dadToken') || ''); }   // Son's mode never sends the PIN token
   function cacheKey(fn, args) { return 'c|' + fn + '|' + JSON.stringify(args) + '|' + (tokenNow() && dadUnlocked() ? 'p' : 'n'); }
   function hasPending(args) { return args.some(function (a) { return typeof a === 'string' && a.indexOf('pending:') === 0; }); }
@@ -429,7 +429,7 @@
   function openScanner(opts) {
     SCAN.opts = opts || {}; SCAN.last = ''; SCAN.hits = 0;
     var box = scanBox(); box.hidden = false;
-    $('scanTitle').textContent = SCAN.opts.assign ? 'Scan the barcode for ' + SCAN.opts.assign.name : (S.kid ? 'Scan a box!' : 'Point at the barcode');
+    $('scanTitle').textContent = SCAN.opts.assign ? 'Scan the barcode for ' + SCAN.opts.assign.name : (SCAN.opts.add ? 'Scan the barcode for this new item' : (S.kid ? 'Scan a box!' : 'Point at the barcode'));
     $('scanMsg').textContent = 'Hold the box steady, about a hand\u2019s width away.';
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { scanNoCamera(); return; }
     navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false }).then(function (stream) {
@@ -480,14 +480,14 @@
     img.src = url;
   }
   function typeCode() {
-    var assign = SCAN.opts && SCAN.opts.assign;
+    var opts = SCAN.opts || {};
     stopScanner();
     sheet('\u2328\uFE0F Type the barcode', '<p class="hint">The numbers under the stripes (usually 12 or 13 of them).</p><input type="text" id="bcTyped" inputmode="numeric" autocomplete="off" placeholder="e.g. 5012345678900" style="font-size:22px;letter-spacing:1px">',
       [{ label: 'Check it', value: 'go', cls: 'main' }, { label: 'Cancel', value: '' }]).then(function (v) {
       var code = bcDigits(($('bcTyped') || {}).value);
-      if (v !== 'go') return;
+      if (v !== 'go') { if (opts.add && S.screen === 'add') go('add', {}, true); return; }
       if (code.length < 6) { toast('That needs to be the numbers under the barcode (8 to 14 of them).', 'oops'); return; }
-      SCAN.opts = { assign: assign }; handleCode(code);
+      SCAN.opts = opts; handleCode(code);
     });
     setTimeout(function () { if ($('bcTyped')) $('bcTyped').focus(); }, 80);
   }
@@ -500,6 +500,7 @@
         if (ok) saveBarcodeTo(a.key, a.name, digits).then(function () { if (S.screen === 'item') go('item', S.params, true); });
       });
     }
+    if (opts.add) { applyAddBarcode(digits); return; }
     var hits = itemsByBarcode(digits);
     var listHtml = function (list) {
       return '<div class="list">' + list.map(function (it) {
@@ -656,10 +657,12 @@
   function loadBoot(force) {
     if (S.boot && !force) return Promise.resolve(S.boot);
     busy('Getting the collection\u2026');
+    warmThumbs();
     return call('getBootstrap', S.kid ? KID_ROLE : S.role).then(function (b) {
       var privNow = isPriv() && !S.kid;
       b.items = (b.items || []).filter(function (it) { return !neverShow(it.name) && (privNow || !sonHidden(it.name)); });
       S.boot = b; S.items = b.items;
+      prefetchThumbs(S.kid ? b.items.filter(function (it) { return isOwned(it) && kidSafe(it); }) : b.items);
       return IDB.qAll().then(function (q) { NET.queueLen = q.length; q.forEach(applyQueued); }, noop).then(function () { done(); renderNetBar(); return b; });
     });
   }
@@ -670,17 +673,22 @@
      square JPEG (~15-25 KB), kept in its own IndexedDB entry, and (with Apps Script v4.2) handed back to the
      server once so every later load is small. Only cards on screen are fetched, newest-visible first, a few
      at a time, with a time limit and automatic retries; anything that still fails shows "Tap to retry". */
-  var TH = { at: {}, done: {}, fail: {}, busy: {}, queue: [], running: 0, small: null, timer: null };
+  var TH = { at: {}, done: {}, fail: {}, busy: {}, queue: [], running: 0, small: null, timer: null, kind: {}, pre: {}, bad: {}, autoAt: {}, autoN: {} };
   var TH_MAX_TRIES = 3, TH_PARALLEL = 3, TH_TIMEOUT = 45000, TH_STALE = 3 * 864e5;
   function thumbInner(fid) {
     var t = S.thumbs[fid];
     if (typeof t === 'string') return '<img alt="" decoding="async" src="' + t + '">';
-    if (t === null) return '\uD83D\uDCF7';
+    if (t === null) return noPhotoHtml(TH.kind[fid] === 'video');
     if ((TH.fail[fid] || 0) >= TH_MAX_TRIES) return '<span class="thRetry" data-act="thumbRetry" data-fid2="' + esc(fid) + '" role="button" aria-label="Photo didn\u2019t load. Tap to try again">\u21BB<small>Tap to retry</small></span>';
     return '<span class="thWait" aria-label="Loading photo"></span>';
   }
+  /* v7: a card with no picture says why, so it never looks like a photo that failed to load */
+  function noPhotoHtml(video) {
+    return video ? '<span class="thNone" aria-label="Only a video so far">\uD83C\uDFAC<small>Video only</small></span>'
+      : '<span class="thNone" aria-label="No photo yet">\uD83D\uDCF7<small>No photo yet</small></span>';
+  }
   function thumbHtml(it) {
-    if (!it.folderId) return '<div class="thumb" data-nothumb>\uD83D\uDCF7</div>';
+    if (!it.folderId) return '<div class="thumb" data-nothumb>' + noPhotoHtml(false) + '</div>';
     return '<div class="thumb" data-fid="' + esc(it.folderId) + '">' + thumbInner(it.folderId) + '</div>';
   }
   function paintThumb(fid) {
@@ -709,6 +717,7 @@
       entries.forEach(function (en) { if (en.isIntersecting) queueThumb(en.target.getAttribute('data-fid')); });
     }, { rootMargin: '400px 0px' });
     els.forEach(function (el) { observer.observe(el); });
+    sweepThumbs(); setTimeout(sweepThumbs, 700);    // v7: cards already on screen are asked for even if the observer is late
   }
   /* safety net: after scrolling stops, anything on screen that still needs a photo is asked for */
   var thScrollT = null;
@@ -718,7 +727,7 @@
     var vis = [], near = [];
     TH.queue.forEach(function (fid) {
       var el = document.querySelector('[data-fid="' + fid + '"]');
-      if (!el) return;                                   // no longer on the page: asked for again if it comes back
+      if (!el) { if (TH.pre[fid]) near.push(fid); return; }   // not on the page: only first-screen pre-fetches go ahead
       (onScreen(el, 50) ? vis : near).push(fid);
     });
     var all = vis.concat(near);
@@ -758,15 +767,17 @@
       setTimeout(autoRetryThumbs, 0);   // the line works again: give failed photos on screen one more go
       return Promise.all(batch.map(function (fid) {
         if (!Object.prototype.hasOwnProperty.call(r.thumbs, fid)) { delete TH.busy[fid]; TH.queue.push(fid); return null; }  // server ran out of time: ask again
-        var v = r.thumbs[fid];
+        var v = r.thumbs[fid], kind = r.kinds && r.kinds[fid];
+        delete TH.pre[fid];
+        if (!v && kind === 'error') { delete TH.busy[fid]; thumbFailed(fid); return null; }   // Drive hiccup: try again
         if (!v) {
-          delete TH.busy[fid]; TH.done[fid] = 1;
+          delete TH.busy[fid]; TH.done[fid] = 1; TH.kind[fid] = kind || '';
           if (typeof S.thumbs[fid] !== 'string') { S.thumbs[fid] = null; paintThumb(fid); }
           return null;
         }
         return shrinkThumb(v).then(function (small) {
           delete TH.busy[fid];
-          if (!small) { thumbFailed(fid); return; }
+          if (!small) { TH.bad[fid] = (TH.bad[fid] || 0) + 1; thumbFailed(fid); return; }
           S.thumbs[fid] = small; TH.at[fid] = Date.now(); TH.done[fid] = 1; delete TH.fail[fid];
           IDB.tSet(fid, { d: small, at: TH.at[fid] }).catch(noop);
           paintThumb(fid);
@@ -785,18 +796,49 @@
     if (offline || (TH.fail[fid] || 0) >= TH_MAX_TRIES) { if (offline) TH.fail[fid] = TH_MAX_TRIES; paintThumb(fid); return; }
     setTimeout(function () { queueThumb(fid); }, 1500 * TH.fail[fid]);       // try again shortly
   }
-  function autoRetryThumbs() {
-    TH.auto = TH.auto || {};
+  /* v7: never give up on a photo that's on screen - try again every so often (20 s, 40 s, ... up to 3 min) */
+  function autoRetryThumbs(now) {
+    var t = Date.now();
     Object.keys(TH.fail).forEach(function (fid) {
-      if (TH.fail[fid] < TH_MAX_TRIES || TH.auto[fid]) return;
+      if (TH.fail[fid] < TH_MAX_TRIES) return;
+      if (!now && t < (TH.autoAt[fid] || 0)) return;
       var el = document.querySelector('[data-fid="' + fid + '"]');
-      if (el && onScreen(el, 400)) { TH.auto[fid] = 1; retryThumb(fid); }
+      if (!el || !onScreen(el, 400)) return;
+      TH.autoN[fid] = (TH.autoN[fid] || 0) + 1;
+      TH.autoAt[fid] = t + Math.min(180000, 20000 * TH.autoN[fid]);
+      retryThumb(fid);
     });
+  }
+  function thumbsWakeUp() {          // back to the app, or signal back: re-check the screen straight away
+    if (document.visibilityState === 'hidden' || navigator.onLine === false) return;
+    TH.autoAt = {}; autoRetryThumbs(true); sweepThumbs(); pumpThumbs();
+  }
+  document.addEventListener('visibilitychange', thumbsWakeUp);
+  window.addEventListener('pageshow', thumbsWakeUp);
+  setInterval(function () { if (document.visibilityState !== 'hidden' && navigator.onLine !== false) { autoRetryThumbs(); sweepThumbs(); } }, 20000);
+  /* a saved thumbnail that the phone can't draw (empty or broken) is thrown away and fetched again */
+  document.addEventListener('error', function (e) {
+    var im = e.target; if (!im || im.tagName !== 'IMG' || !im.closest) return;
+    var box = im.closest('[data-fid]'); if (!box) return;
+    var fid = box.getAttribute('data-fid');
+    if ((TH.bad[fid] = (TH.bad[fid] || 0) + 1) > 2) return;
+    forgetThumb(fid); paintThumb(fid); queueThumb(fid);
+  }, true);
+  /* first screen: fetch the newest items' photos as soon as the list arrives, before they're even drawn */
+  function prefetchThumbs(items) {
+    var idn = function (it) { var m = String(it.id || '').match(/(\d+)\s*$/); return m ? +m[1] : 0; };
+    (items || []).slice().sort(function (a, b) { return idn(b) - idn(a) || b.row - a.row; }).filter(function (it) { return it.folderId; }).slice(0, 12)
+      .forEach(function (it) { if (thumbNeeded(it.folderId)) { TH.pre[it.folderId] = 1; queueThumb(it.folderId); } });
+  }
+  var thWarm = false;
+  function warmThumbs() {              // wakes Apps Script up while the list is loading, so the first batch isn't the slow one
+    if (thWarm || navigator.onLine === false) return; thWarm = true;
+    rawCall('getThumbsSmall', [[], '']).catch(function () { thWarm = false; });
   }
   function retryThumb(fid) { delete TH.fail[fid]; delete TH.done[fid]; paintThumb(fid); queueThumb(fid); }
   window.addEventListener('online', function () {
     Object.keys(TH.fail).forEach(function (fid) { if (TH.fail[fid] >= TH_MAX_TRIES && document.querySelector('[data-fid="' + fid + '"]')) retryThumb(fid); });
-    pumpThumbs();
+    thumbsWakeUp();
   });
   /* shrink a big thumbnail to a 320px square JPEG (what the card shows anyway) */
   function shrinkThumb(src) {
@@ -818,10 +860,12 @@
     });
   }
   /* kept on the phone (one entry per item), so photos show straight away and with no signal */
+  function goodThumb(d) { return typeof d === 'string' && d.length > 300 && /^data:image\/(jpeg|png|webp|gif);base64,[A-Za-z0-9+\/]{100}/.test(d); }
   function loadSavedThumbs() {
     return IDB.tAll().then(function (m) {
       Object.keys(m || {}).forEach(function (k) {
-        var v = m[k]; if (!v || !v.d) return;
+        var v = m[k];
+        if (!v || !goodThumb(v.d)) { IDB.tDel(k).catch(noop); return; }   // v7: empty or broken - fetch it again
         if (typeof S.thumbs[k] !== 'string') { S.thumbs[k] = v.d; TH.at[k] = v.at || 0; paintThumb(k); }
       });
       migrateOldThumbs();
@@ -835,9 +879,9 @@
       var next = function () {
         if (i >= keys.length) { old = null; return IDB.del('thumbs').catch(noop); }
         var k = keys[i++], v = old[k];
-        if (!v || typeof S.thumbs[k] === 'string') return next();
+        if (!goodThumb(v) || typeof S.thumbs[k] === 'string') return next();
         return shrinkThumb(v).then(function (small) {
-          if (small && typeof S.thumbs[k] !== 'string') { S.thumbs[k] = small; TH.at[k] = 0; paintThumb(k); return IDB.tSet(k, { d: small, at: 0 }).catch(noop); }
+          if (goodThumb(small) && typeof S.thumbs[k] !== 'string') { S.thumbs[k] = small; TH.at[k] = 0; paintThumb(k); return IDB.tSet(k, { d: small, at: 0 }).catch(noop); }
         }).then(function () { return new Promise(function (r) { setTimeout(r, 30); }); }).then(next);
       };
       return next();
@@ -845,12 +889,12 @@
   }
   function forgetThumb(fid) {
     if (!fid) return;
-    delete S.thumbs[fid]; delete TH.at[fid]; delete TH.done[fid]; delete TH.fail[fid];
+    delete S.thumbs[fid]; delete TH.at[fid]; delete TH.done[fid]; delete TH.fail[fid]; delete TH.kind[fid];
     IDB.tDel(fid).catch(noop);
   }
   /* Refresh: keep showing what we have, but quietly re-check each photo as it comes on screen */
   function thumbsRefresh() {
-    TH.done = {}; TH.fail = {}; TH.at = {}; TH.auto = {};
+    TH.done = {}; TH.fail = {}; TH.at = {}; TH.autoAt = {}; TH.autoN = {}; TH.bad = {}; TH.kind = {};
     Object.keys(S.thumbs).forEach(function (k) { if (typeof S.thumbs[k] !== 'string') delete S.thumbs[k]; });
   }
 
@@ -908,23 +952,33 @@
     var target = S.camTarget; S.camTarget = null;
     if (!files.length || !target) return;
     if (target.mode === 'add') { addShots(files); return; }
-    var n = 0, names = [];
+    var n = 0, names = [], pending = 0;
     busy('Saving to the item\u2019s folder\u2026');
     files.reduce(function (p, f) {
       return p.then(function () { return prepareFile(f); }).then(function (pf) {
         return call('uploadMedia', target.key, target.name, pf.mime, pf.b64, target.makeMain ? 'Main' : 'auto', !!target.makeMain && n === 0);
-      }).then(function (r) { n++; names.push(r.fileName); if (r.folderId) updateFolder(target.key, r.folderId); });
+      }).then(function (r) { n++; names.push(r.fileName); if (r.pending) pending++; if (r.folderId && !r.pending) updateFolder(target.key, r.folderId); });
     }, Promise.resolve()).then(function () {
       done();
       if (S.kid) bumpKid('kidPhotos', n);
-      toast(target.makeMain ? '\u2B50 New main photo saved. The old one is still in the folder.' : '\uD83C\uDF89 Saved ' + (n === 1 ? names[0] : n + ' files') + '. Nice one!', 'good');
-      var it = itemByKey(target.key); if (it && it.folderId) forgetThumb(it.folderId);
-      if (S.boot && S.boot.tiles.photos.next && S.boot.tiles.photos.next.key === target.key) S.boot = null;
+      if (pending) toast(n === 1 ? 'Nice one! Dad will have a look, then you get 10 points.' : 'Nice one! Dad will have a look at the photos.', 'good');
+      else {
+        toast(target.makeMain ? '\u2B50 New main photo saved. The old one is still in the folder.' : '\uD83C\uDF89 Saved ' + (n === 1 ? names[0] : n + ' files') + '. Nice one!', 'good');
+        var it = itemByKey(target.key); if (it && it.folderId) forgetThumb(it.folderId);
+        if (S.boot && S.boot.tiles && S.boot.tiles.photos.next && S.boot.tiles.photos.next.key === target.key) S.boot = null;
+      }
       if (S.screen === 'item' || S.screen === 'kidItem') go(S.screen, S.params, true);
-      else if (S.screen === 'photos' || S.screen === 'home') { S.boot = null; go(S.screen, S.params, true); }
+      else if (S.screen === 'photos' || S.screen === 'home' || S.screen === 'kid' || S.screen === 'kidStuff') { S.boot = null; go(S.screen, S.params, true); }
     }).catch(function (e) { oops(e); if (n) toast('Saved ' + n + ', but one didn\u2019t go. Try that one again from the item page.', 'oops'); });
   }
   function updateFolder(key, fid) { var it = itemByKey(key); if (it) it.folderId = fid; }
+  function pointsNote(r, msg) {
+    var pts = r && r.points, bit = pts > 0 ? ('+' + pts + ' point' + (pts === 1 ? '' : 's') + '!') : '';
+    if (msg && bit) toast(msg + ' ' + bit, 'good');
+    else if (bit) toast(bit, 'good');
+    else if (msg) toast(msg, 'good');
+    return pts > 0;
+  }
 
   /* ---------------- help text ---------------- */
   var HELP = {
@@ -932,7 +986,7 @@
     collection: ['Everything you own, with the newest photo of each.', 'Type in the search box or use the three filters (range, status, condition).', 'Tap any picture to open it.'],
     item: ['This is one item.', 'Tap \u201CAdd photo / video\u201D to use the camera - it saves straight into the item\u2019s own Drive folder.', 'Tap a photo to see it big, or make it the main photo.', 'Tap \u201CEdit details\u201D to fix the name, category, condition and so on.', 'Tap a platform under \u201CPosted on\u201D once it\u2019s been posted.'],
     edit: ['Change anything, then tap Save.', 'Year is just the 4 numbers, like 1999. Anything else goes in Year note.', 'Nothing gets deleted from here - the worst that can happen is a typo you can fix.'],
-    add: ['Four quick steps: photo, name, range, condition.', 'Everything else is optional - you can add it later.', 'If it looks like you already have it, I\u2019ll ask before adding a second one.'],
+    add: ['Four quick steps: photo, name, range, condition.', 'On the name step you can scan or type the barcode so it\u2019s saved with the new item.', 'Everything else is optional - you can add it later.', 'If it looks like you already have it, I\u2019ll ask before adding a second one.'],
     wanted: ['Things you\u2019re hunting for.', 'Got one? Tap \u201CGot it\u201D and it moves into the collection (I\u2019ll check first).'],
     checklists: ['How close you are to each full set.', 'Tap a set to see what\u2019s missing.'],
     checklist: ['Green = got it. The rest are still missing.', 'Tap \u201CGot it\u201D to tick one off - I\u2019ll check first.'],
@@ -940,6 +994,8 @@
     photos: ['Items that still need our own photos.', 'Tap \u201CTake photo\u201D and it goes straight into that item\u2019s folder.', 'Remember: no faces or people in shot.'],
     novalue: ['Items without a value yet.', 'Tap \u201CAdd value\u201D to type your best guess.'],
     settings: ['Switch between ' + THEME.roles.join(' and ') + ', take the tour again, or open the sheet and Drive folders.'],
+    rewards: ['Son\u2019s points and rewards live here.', 'Photos he adds wait for you to say yes (that\u2019s when the 10 points land). Nothing is deleted if you say no.', 'Approve a reward with your PIN each time. You can add or switch off rewards; money words are not allowed.'],
+    kidRewards: ['You earn points for photos (once Dad says yes), ticking things off, and new finds.', 'Ask Dad for a reward when you have enough points. Hidden or secret things never earn points, and there are never prices here.'],
     more: ['Everything else lives here: stats, posted on socials, spares, the missing list, export and help.', 'Tap any big button.'],
     stats: ['Totals and charts for the whole collection.', 'Money only shows for ' + PRIV + '.'],
     posted: ['What\u2019s been posted on socials, and what hasn\u2019t yet.', 'Tap an item, then tap a platform button to tick it.'],
@@ -974,7 +1030,7 @@
 
   /* ================= v4: Son's mode (big tiles, photos, no money, nothing Christmassy) ================= */
   var KID_ROLE = THEME.roles.filter(function (r) { return r !== PRIV; })[0] || 'Son';
-  var KID_SCREENS = ['kid', 'kidStuff', 'kidItem', 'kidHunt', 'kidBadges', 'pin', 'add'];
+  var KID_SCREENS = ['kid', 'kidStuff', 'kidItem', 'kidHunt', 'kidBadges', 'kidRewards', 'pin', 'add'];
   function enterKid() {
     LS.set('kidPrevRole', S.role || '');
     clearDadToken();                    // money needs the PIN again after Son's mode
@@ -1012,13 +1068,17 @@
         '<button class="kbig pink" data-act="go" data-to="kidHunt"><span>\u2B50</span><b>On the hunt</b><small id="kidHuntN">find these!</small></button>' +
         '<button class="kbig skyL" data-act="scan"><span>\uD83D\uDCF7</span><b>Scan a box</b><small>have we got it?</small></button>' +
         '<button class="kbig green" data-act="kidNew"><span>\u2795</span><b>New find!</b><small>snap it and save it</small></button>' +
+        '<button class="kbig yel kwide" data-act="go" data-to="kidRewards"><span>\u2B50</span><b>My points</b><small id="kidPtsN">earn rewards!</small></button>' +
         '<button class="kbig pinkL kwide" data-act="go" data-to="kidBadges"><span>\uD83C\uDFC6</span><b>My badges</b><small id="kidBadgeN">see what you\u2019ve earned</small></button>' +
+        '<button class="kbig paper kwide" data-act="letterOpen"><span>\u2709\uFE0F</span><b>Letter from Dad</b><small>How it all started</small></button>' +
         '</div>' +
         '<div class="center" style="margin-top:18px"><button class="btn small" data-act="kidExit">\uD83D\uDD13 Grown-ups: full app</button></div>';
       setMain(h);
       bindOwnSearch('kidSearch', 'kidOwnOut');
       checkNewBadges().then(function (B) { var n = B.filter(function (b) { return b.got; }).length; if ($('kidBadgeN')) $('kidBadgeN').textContent = n + ' badge' + (n === 1 ? '' : 's') + ' so far!'; }).catch(noop);
       loadHomeWanted().then(function (w) { var n = w.filter(function (x) { return kidSafe(x); }).length; if ($('kidHuntN')) $('kidHuntN').textContent = n + ' to find!'; });
+      loadRewards().then(function (r) { if ($('kidPtsN') && r) $('kidPtsN').textContent = r.balance + ' points \u00B7 ' + r.level.name; }).catch(noop);
+      maybeShowLetter();
     }).catch(oops);
   };
   SCREENS.kidStuff = function () {
@@ -1044,13 +1104,14 @@
       if (!it || !kidSafe(it)) { go('kidStuff', {}, true); return; }
       S.current = it;
       var t = it.folderId ? S.thumbs[it.folderId] : null;
-      var h = backBtn() + '<div class="card center kidItem"><div class="khero" id="kHero">' + (t ? '<img alt="" src="' + t + '">' : '<span>\uD83D\uDCF7</span>') + '</div>' +
+      var hero = t ? '<img alt="" src="' + t + '">' : (it.folderId ? thumbInner(it.folderId) : noPhotoHtml(false));
+      var h = backBtn() + '<div class="card center kidItem"><div class="khero" id="kHero"' + (it.folderId ? ' data-fid="' + esc(it.folderId) + '"' : '') + '>' + hero + '</div>' +
         '<h1>' + esc(it.name) + '</h1><div class="chips" style="justify-content:center">' + [it.range, it.character, it.year].filter(function (x) { return x && !/^unknown$/i.test(x); }).map(function (x) { return '<span class="chip on">' + esc(x) + '</span>'; }).join('') + '</div>' +
         '<div class="stack" style="margin-top:14px"><button class="btn main full kbtn" data-act="kidSnap">\uD83D\uDCF7 Add a photo</button>' +
         (it.status === 'Wanted' || it.status === 'On order' ? '<button class="btn green full kbtn" data-act="kidGotItem">\uD83C\uDF89 We got it!</button>' : '<div class="pill green" style="font-size:18px;padding:6px 14px">\u2705 We\u2019ve got this!</div>') +
         '</div></div>';
       setMain(h);
-      if (it.folderId && !t) call('getItemPhotos', it.folderId).then(function (ph) { var f = (ph || []).filter(function (x) { return x.thumb; })[0]; if (f && $('kHero')) $('kHero').innerHTML = '<img alt="" src="' + f.thumb + '">'; }).catch(noop);
+      if (it.folderId) { watchThumbs(); if (!t) call('getItemPhotos', it.folderId).then(function (ph) { var f = (ph || []).filter(function (x) { return x.thumb; })[0]; if (f && $('kHero') && typeof S.thumbs[it.folderId] !== 'string') { shrinkThumb(f.thumb).then(function (s) { if (s && $('kHero')) { S.thumbs[it.folderId] = s; paintThumb(it.folderId); } }); } }).catch(noop); }
     }).catch(oops);
   };
   SCREENS.kidHunt = function () {
@@ -1071,7 +1132,7 @@
       busy('Adding it to our stuff\u2026');
       return call('markGotIt', w.kind, w.ref, w.name, KID_ROLE).then(function (r) {
         done(); bumpKid('kidFound'); S.boot = null; S.homeWanted = null;
-        toast(r.queued ? '\uD83C\uDF89 Got it! It\u2019ll save when there\u2019s signal.' : '\uD83C\uDF89 Brilliant! It\u2019s in our collection.', 'good');
+        pointsNote(r, r.queued ? '\uD83C\uDF89 Got it! It\u2019ll save when there\u2019s signal.' : '\uD83C\uDF89 Brilliant! It\u2019s in our collection.');
         return confirmSheet('Take a photo?', 'Snap <b>' + esc(r.name || w.name) + '</b> now? (No faces - hands are fine.)', '\uD83D\uDCF7 Take photo', 'Later').then(function (snap) {
           if (snap && r.key) openCamera({ key: r.key, name: r.name || w.name }); else go('kidHunt', {}, true);
         });
@@ -1079,6 +1140,242 @@
     }).catch(oops);
   }
 
+
+  /* ================= v7: letter from Dad + points / rewards ================= */
+  var DAD_LETTER = {
+    title: 'How it all started',
+    paras: [
+      'It was 2024. You were up in the loft with me, poking about in boxes nobody had opened in years, when you pulled one out and shouted, \u201CDad, what\u2019s THIS?\u201D',
+      'It was my old Simpsons box, the figures and bits I\u2019d kept since I was a boy, sure that one day they\u2019d matter to someone. I just didn\u2019t know it would be you.',
+      'You held up Homer like you\u2019d found treasure. And honestly, you had. Not because of what any of it was worth, but because of what it started. From that day on it wasn\u2019t my collection any more. It was ours.',
+      'Every figure in this app has a story: car boot finds, eBay battles, birthday surprises, and lots of Saturday mornings filming them on the kitchen table. Some are rare, some are a bit battered, and every one of them is here because we chose it together.',
+      'So if you\u2019re reading this all grown up, maybe with a wee one of your own: the best thing in this collection was never on a shelf. It was the time we spent building it.'
+    ],
+    sign: 'Love you, wee man.',
+    from: 'Dad x',
+    mum: 'Our logo is a gift from Mum: the whole family, pets and all.'
+  };
+  function londonDay() {
+    try { return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()); }
+    catch (e) { return new Date().toISOString().slice(0, 10); }
+  }
+  function fillDadLetter() {
+    var box = $('letterInner'); if (!box) return;
+    box.innerHTML = '<h1 id="letterTitle">' + esc(DAD_LETTER.title) + '</h1>' +
+      DAD_LETTER.paras.map(function (p) { return '<p>' + esc(p) + '</p>'; }).join('') +
+      '<div class="letterSign"><p class="love">' + esc(DAD_LETTER.sign) + '</p><p class="dad">' + esc(DAD_LETTER.from) + '</p></div>' +
+      '<p class="letterMum">' + esc(DAD_LETTER.mum) + '</p>' +
+      '<img class="letterLogo" src="assets/family.jpg" alt="Our family logo, a gift from Mum">';
+  }
+  function showDadLetter(force) {
+    fillDadLetter();
+    var el = $('dadLetter'); if (!el) return;
+    el.hidden = false;
+    try { var b = el.querySelector('.letterGo'); if (b) b.focus(); } catch (e) { /* ignore */ }
+  }
+  function hideDadLetter() {
+    var el = $('dadLetter'); if (el) el.hidden = true;
+    LS.set('kidLetterDay', londonDay());
+  }
+  function maybeShowLetter() {
+    if (!S.kid) return;
+    if (LS.get('kidLetterDay') === londonDay()) return;
+    showDadLetter(false);
+  }
+
+  var RW = null;
+  function loadRewards(force) {
+    if (RW && !force) return Promise.resolve(RW);
+    return call('getRewards', S.kid ? KID_ROLE : S.role).then(function (r) { RW = r; return r; });
+  }
+  function niceWhen(iso) {
+    if (!iso) return '';
+    try { return new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(iso)); }
+    catch (e) { return String(iso).slice(0, 16); }
+  }
+  function rwAction(a) {
+    return ({ photo: 'Photo', found: 'Ticked off a find', update: 'Updated something', add: 'New item', streak: '3-day streak bonus' })[a] || a;
+  }
+  function paintRewardsHome(r) {
+    var box = $('rwHomeTile'); if (!box || !r) return;
+    var bits = [];
+    if (r.queue && r.queue.length) bits.push(r.queue.length + ' photo' + (r.queue.length === 1 ? '' : 's') + ' waiting');
+    if (r.pendingRequests && r.pendingRequests.length) bits.push(r.pendingRequests.length + ' reward' + (r.pendingRequests.length === 1 ? '' : 's') + ' to decide');
+    box.innerHTML = '<div class="head">\u2B50 ' + esc(KID_ROLE) + '\u2019s rewards</div>' +
+      '<div class="big">' + r.earned + '</div><div class="hint">points earned' + (bits.length ? ' \u00B7 ' + bits.join(' \u00B7 ') : '') + '</div>' +
+      '<button class="btn main" data-act="go" data-to="rewards">' + (bits.length ? 'Review' : 'Open') + '</button>';
+  }
+  function rwLevelCard(r) {
+    var lv = r.level || {}, nextAt = lv.nextAt, have = r.earned || 0, min = lv.min || 0;
+    var span = nextAt ? (nextAt - min) : 1, done = nextAt ? Math.min(1, (have - min) / span) : 1;
+    return '<div class="card yel ptsCard center"><div class="hint">' + esc(lv.name || '') + '</div><div class="big">' + (r.balance || 0) + '</div><div class="hint">points to spend' +
+      (r.held ? ' \u00B7 ' + r.held + ' waiting on Dad' : '') + '</div>' +
+      '<div class="ptsBar" aria-hidden="true"><i style="width:' + Math.round(100 * done) + '%"></i></div>' +
+      '<p class="hint">' + (lv.next ? (nextAt - have) + ' more to become ' + esc(lv.next) : 'Top level! Comic Book Guy would be proud.') +
+      (r.streak ? '<br>' + (r.helpedToday ? r.streak + ' day' + (r.streak === 1 ? '' : 's') + ' in a row' + (r.streak >= 3 ? ' \u2014 streak bonus unlocked!' : '. Keep going for a bonus at 3.') : 'Help today to keep your ' + r.streak + '-day streak') : '') +
+      '</p></div>';
+  }
+  function rwNeedOk() {
+    return '<div class="nudge">This bit needs a quick update on the collection sheet (version 4.4). Until then, photos and the rest of the app still work as usual.</div>';
+  }
+
+  SCREENS.kidRewards = function () {
+    busy('Counting your points\u2026');
+    loadBoot().then(function () { return loadRewards(true); }).then(function (r) {
+      done();
+      var rewards = (r.rewards || []).map(function (x) {
+        var pending = (r.requests || []).some(function (q) { return q.title === x.title && q.status === 'Pending'; });
+        var need = x.cost - (r.balance || 0);
+        var btn = pending ? '<span class="pill yel">Asked \u2014 waiting for Dad</span>' :
+          (need > 0 ? '<span class="hint">' + need + ' more points to go</span>' :
+            '<button class="btn main" data-act="rwAsk" data-id="' + esc(x.id) + '">Ask Dad</button>');
+        return '<div class="rwItem"><div class="row"><b>' + esc(x.title) + '</b><span class="pill">' + x.cost + ' pts</span></div>' + btn + '</div>';
+      }).join('');
+      var reqs = (r.requests || []).length ? '<h2>Your asks</h2><div class="rwList">' + r.requests.map(function (q) {
+        return '<div class="rwItem"><b>' + esc(q.title) + '</b><small>' + esc(q.status) + (q.when ? ' \u00B7 ' + esc(niceWhen(q.when)) : '') + '</small></div>';
+      }).join('') + '</div>' : '';
+      var recent = (r.recent || []).length ? '<h2>Lately</h2><div class="list rwLog">' + r.recent.slice(0, 12).map(function (x) {
+        return '<div class="li"><div class="grow">' + esc(rwAction(x.action)) + (x.item ? '<small>' + esc(x.item) + '</small>' : '') + '</div><span class="pill">' + (x.points > 0 ? '+' : '') + x.points + '</span></div>';
+      }).join('') + '</div>' : '';
+      setMain(backBtn() + '<h1>\u2B50 My points</h1>' + rwLevelCard(r) +
+        (r.waiting ? '<div class="nudge">Dad is having a look at ' + r.waiting + ' photo' + (r.waiting === 1 ? '' : 's') + '. You get 10 points for each one he says yes to.</div>' : '') +
+        '<h2>Rewards you can ask for</h2><p class="hint">Photos (when Dad says yes) are 10 points, ticks and updates are 5, and a brand new item is 20. Help 3 days in a row for a bonus.</p><div class="rwList">' +
+        (rewards || '<p class="hint">Dad hasn\u2019t set any rewards yet.</p>') + '</div>' + reqs + recent);
+    }).catch(function (e) { done(); setMain(backBtn() + '<h1>\u2B50 My points</h1>' + rwNeedOk()); });
+  };
+
+  SCREENS.rewards = function () {
+    if (!isPriv()) { go('home', {}, true); return; }
+    busy('Getting the rewards\u2026');
+    loadRewards(true).then(function (r) {
+      done();
+      var q = (r.queue || []).map(function (p) {
+        return '<div class="rwItem" data-qid="' + esc(p.id) + '"><div class="qThumb" id="qth-' + esc(p.id) + '"><span class="thWait"></span></div>' +
+          '<b>' + esc(p.item) + '</b><small>' + esc([p.label, niceWhen(p.when)].filter(Boolean).join(' \u00B7 ')) + '</small>' +
+          '<label class="field" style="font-weight:700"><input type="checkbox" class="qMain" checked> Make this the main photo</label>' +
+          '<div class="row"><button class="btn green" data-act="rwPhotoYes" data-id="' + esc(p.id) + '">Yes, it\u2019s in</button>' +
+          '<button class="btn" data-act="rwPhotoNo" data-id="' + esc(p.id) + '">Not this time</button></div></div>';
+      }).join('');
+      var asks = (r.pendingRequests || []).map(function (x) {
+        return '<div class="rwItem"><div class="row"><b>' + esc(x.title) + '</b><span class="pill">' + x.cost + ' pts</span></div><small>' + esc(niceWhen(x.when)) + '</small>' +
+          '<div class="row"><button class="btn green" data-act="rwYes" data-id="' + esc(x.id) + '">Yes (PIN)</button>' +
+          '<button class="btn" data-act="rwNo" data-id="' + esc(x.id) + '">Not this time (PIN)</button></div></div>';
+      }).join('');
+      var all = (r.allRewards || []).map(function (x) {
+        return '<div class="rwItem"><label class="field">Reward <input type="text" class="rwTitle" data-id="' + esc(x.id) + '" value="' + esc(x.title) + '" maxlength="60"></label>' +
+          '<label class="field">Points <input type="number" class="rwCost" data-id="' + esc(x.id) + '" value="' + x.cost + '" min="5" step="5"></label>' +
+          '<label class="field" style="font-weight:700"><input type="checkbox" class="rwOn" data-id="' + esc(x.id) + '"' + (x.active ? ' checked' : '') + '> On the list</label></div>';
+      }).join('');
+      var log = (r.log || []).slice(0, 80).map(function (x) {
+        return '<div class="li"><div class="grow">' + esc(rwAction(x.action)) + (x.item ? '<small>' + esc(x.item) + (x.detail ? ' \u00B7 ' + esc(x.detail) : '') + '</small>' : (x.detail ? '<small>' + esc(x.detail) + '</small>' : '')) +
+          '<small>' + esc(niceWhen(x.when)) + '</small></div><span class="pill">' + (x.points > 0 ? '+' : '') + x.points + '</span></div>';
+      }).join('');
+      setMain(backBtn() + '<h1>\u2B50 ' + esc(KID_ROLE) + '\u2019s rewards</h1>' +
+        '<div class="card skyL"><b>' + (r.earned || 0) + '</b> points earned \u00B7 <b>' + (r.balance || 0) + '</b> to spend \u00B7 ' + esc((r.level && r.level.name) || '') +
+        (r.streak ? ' \u00B7 ' + r.streak + '-day streak' : '') + '</div>' +
+        '<h2>Photos waiting</h2>' + (q ? '<div class="rwList">' + q + '</div>' : '<p class="hint">None waiting \u2014 you\u2019re all caught up.</p>') +
+        '<h2>Reward asks</h2>' + (asks ? '<div class="rwList">' + asks + '</div>' : '<p class="hint">No asks waiting.</p>') +
+        '<h2>Rewards he can ask for</h2><p class="hint">No money in the names, please. Switch one off rather than deleting it.</p><div class="rwList" id="rwEdit">' + all +
+        '<div class="rwItem"><label class="field">New reward <input type="text" id="rwNewTitle" maxlength="60" placeholder="e.g. Pick the next film"></label>' +
+        '<label class="field">Points <input type="number" id="rwNewCost" min="5" step="5" value="100"></label></div></div>' +
+        '<p class="center"><button class="btn main" data-act="rwSave">Save rewards</button></p>' +
+        '<h2>Activity log</h2><div class="list rwLog">' + (log || '<p class="hint">Nothing yet.</p>') + '</div>');
+      (r.queue || []).forEach(function (p) {
+        call('getQueuePhoto', p.id, S.role).then(function (ph) {
+          var box = $('qth-' + p.id); if (!box) return;
+          if (ph && ph.video && !ph.thumb) { box.innerHTML = '\uD83C\uDFAC'; return; }
+          if (ph && ph.thumb) shrinkThumb(ph.thumb).then(function (s) { if ($('qth-' + p.id)) $('qth-' + p.id).innerHTML = s ? '<img alt="" src="' + s + '">' : '\uD83D\uDCF7'; });
+          else box.innerHTML = '\uD83D\uDCF7';
+        }).catch(function () { var box = $('qth-' + p.id); if (box) box.innerHTML = '\uD83D\uDCF7'; });
+      });
+    }).catch(function (e) { done(); setMain(backBtn() + '<h1>\u2B50 ' + esc(KID_ROLE) + '\u2019s rewards</h1>' + rwNeedOk()); });
+  };
+
+  function askReward(id) {
+    if (!id) return;
+    confirmSheet('Ask Dad?', 'He\u2019ll get this on his rewards page, and the points are held until he says yes or no.', 'Yes, ask him', 'Not now').then(function (ok) {
+      if (!ok) return;
+      busy('Sending to Dad\u2026');
+      return call('requestReward', id, KID_ROLE).then(function () {
+        done(); RW = null; toast('Asked! Dad will take a look.', 'good'); go('kidRewards', {}, true);
+      });
+    }).catch(oops);
+  }
+  function decideRewardUI(id, yes) {
+    if (!id) return;
+    var wrap = sheet('Dad\u2019s PIN', '<p class="hint">Needed each time you ' + (yes ? 'approve' : 'say no to') + ' a reward.</p><input id="rwPin" type="password" inputmode="numeric" maxlength="4" autocomplete="one-time-code" placeholder="\u2022\u2022\u2022\u2022">',
+      [{ label: yes ? 'Yes, approve' : 'No, not this time', value: 'go', cls: 'main' }, { label: 'Cancel', value: '' }]);
+    setTimeout(function () { var i = $('rwPin'); if (i) i.focus(); }, 50);
+    wrap.then(function (v) {
+      var pin = ($('rwPin') && $('rwPin').value) || '';
+      if (v !== 'go') return;
+      if (!/^\d{4}$/.test(pin)) { toast('That needs to be the 4-digit PIN.', 'oops'); return; }
+      busy(yes ? 'Approving\u2026' : 'Saving\u2026');
+      return call('decideReward', id, !!yes, pin, S.role).then(function (r) {
+        done(); RW = null; toast(r.status === 'Approved' ? 'Approved \u2014 points spent.' : 'Okay, not this time. The points go back.', 'good'); go('rewards', {}, true);
+      });
+    }).catch(oops);
+  }
+  function decidePhotoUI(id, yes, makeMain) {
+    if (!id) return;
+    var title = yes ? 'Add this photo to the item?' : 'Say no to this photo?';
+    var body = yes ? 'It moves into the item\u2019s folder and he gets 10 points. Nothing else is changed.' : 'The file stays in the waiting folder (nothing is deleted) and no points are given.';
+    confirmSheet(title, body, yes ? 'Yes, it\u2019s in' : 'Not this time', 'Cancel').then(function (ok) {
+      if (!ok) return;
+      busy(yes ? 'Adding it to the folder\u2026' : 'Saving\u2026');
+      return call('decidePhoto', id, !!yes, !!makeMain, S.role).then(function (r) {
+        done(); RW = null;
+        if (yes && r.folderId) { updateFolder(r.key, r.folderId); forgetThumb(r.folderId); }
+        pointsNote(r, yes ? 'It\u2019s in the folder.' : 'Left in the waiting folder \u2014 nothing deleted.');
+        go('rewards', {}, true);
+      });
+    }).catch(oops);
+  }
+  function saveRewardsUI() {
+    var list = [], bad = '';
+    document.querySelectorAll('#rwEdit .rwItem').forEach(function (el) {
+      var titleEl = el.querySelector('.rwTitle') || el.querySelector('#rwNewTitle');
+      var costEl = el.querySelector('.rwCost') || el.querySelector('#rwNewCost');
+      if (!titleEl || !costEl) return;
+      var title = (titleEl.value || '').replace(/\s+/g, ' ').trim();
+      if (!title) return;
+      var cost = parseInt(costEl.value, 10);
+      var on = el.querySelector('.rwOn');
+      var id = (titleEl.getAttribute('data-id') || '');
+      if (/[\u00a3$\u20ac]|\b\d+\s*p\b|\bpounds?\b|\bquid\b|\bmoney\b|\bcash\b|\bdollars?\b|\beuros?\b|\bpence\b/i.test(title)) bad = 'Keep money out of reward names.';
+      list.push({ id: id, title: title, cost: cost, active: on ? on.checked : true });
+    });
+    if (bad) { toast(bad, 'oops'); return; }
+    busy('Saving rewards\u2026');
+    call('saveRewards', list, S.role).then(function () { done(); RW = null; toast('Rewards saved.', 'good'); go('rewards', {}, true); }).catch(oops);
+  }
+  function keepAddName() {
+    var A = addState();
+    if (A.step === 2 && $('addName')) A.name = ($('addName').value || '').trim();
+  }
+  function addBarcodeBox(A) {
+    if (A.barcode) {
+      return '<div class="addBc" id="addBcBox"><div><b>\uD83C\uDFF7\uFE0F Barcode</b><div class="addBcCode">' + esc(A.barcode) + '</div></div>' +
+        '<div class="row"><button class="btn small" data-act="addScan">Scan again</button><button class="btn small" data-act="addTypeBc">Type it</button><button class="btn small" data-act="addClearBc">Clear</button></div></div>';
+    }
+    return '<div class="row wrap" style="margin-top:12px"><button class="btn" data-act="addScan">\uD83D\uDCF7 Scan barcode</button><button class="btn" data-act="addTypeBc">\u2328\uFE0F Type it</button></div>';
+  }
+  function applyAddBarcode(digits) {
+    var A = addState(), hits = itemsByBarcode(digits).filter(function (it) { return isOwned(it) && !neverShow(it.name) && (!S.kid || kidSafe(it)); });
+    A.barcode = digits;
+    if (!hits.length) { toast('Barcode saved on this new item.', 'good'); go('add', {}, true); return; }
+    var list = '<div class="list">' + hits.map(function (it) {
+      return '<button class="li ownLi" data-act="' + (S.kid ? 'kidItem' : 'item') + '" data-key="' + esc(it.key) + '">' + thumbHtml(it) + '<div class="grow">' + esc(it.name) + '<small>' + esc(it.range || '') + '</small></div><span>\u203A</span></button>';
+    }).join('') + '</div>';
+    sheet('Looks like it\u2019s already in the collection', '<p>Barcode <b>' + esc(digits) + '</b> matches something we already have.</p>' + list +
+      '<p class="hint">If this is a different copy, you can keep the barcode and carry on adding.</p>',
+      [{ label: 'Keep it and carry on', value: 'keep', cls: 'main' }, { label: 'Open the one we have', value: 'open' }, { label: 'Clear the barcode', value: 'clear' }]).then(function (v) {
+      if (v === 'clear') A.barcode = '';
+      if (v === 'open') { go(S.kid ? 'kidItem' : 'item', { key: hits[0].key }); return; }
+      go('add', {}, true);
+    });
+    setTimeout(watchThumbs, 50);
+  }
 
   SCREENS.guide = function (p) {
     var cards = [
@@ -1193,6 +1490,7 @@ SCREENS.who = function () {
           '<button class="btn small" data-act="go" data-to="photos">See all ' + t.photos.count + '</button>';
       } else h += '<div class="hint">All done - every item has photos. \uD83C\uDF89</div>';
       h += '</div>';
+      if (isPriv()) h += '<div class="card pinkL tile" id="rwHomeTile"><div class="head">\u2B50 ' + esc(KID_ROLE) + '\u2019s rewards</div><div class="hint">Points, photo approvals and rewards.</div><button class="btn main" data-act="go" data-to="rewards">Open</button></div>';
       // No value
       h += '<div class="card skyL tile"><div class="head">\uD83D\uDCB7 No value yet</div><div class="big">' + t.noValue.count + '</div>';
       if (isPriv() && t.noValue.next) h += '<div class="hint">Next: <b>' + esc(t.noValue.next.name) + '</b></div><button class="btn main" data-act="valueFor" data-key="' + esc(t.noValue.next.key) + '">Add a value</button>' +
@@ -1225,9 +1523,12 @@ SCREENS.who = function () {
       bindOwnSearch('homeSearch', 'ownOut');
       refreshDealBadges();
       loadHomeWanted();
-      if (isPriv()) call('getValueSummary', S.role).then(function (vs) {
-        if (vs && typeof vs.total === 'number' && $('valueBox') && S.screen === 'home') $('valueBox').innerHTML = valueCardHtml(vs);
-      }).catch(noop);
+      if (isPriv()) {
+        call('getValueSummary', S.role).then(function (vs) {
+          if (vs && typeof vs.total === 'number' && $('valueBox') && S.screen === 'home') $('valueBox').innerHTML = valueCardHtml(vs);
+        }).catch(noop);
+        loadRewards().then(paintRewardsHome).catch(noop);
+      }
     }).catch(oops);
   };
 
@@ -1417,7 +1718,7 @@ SCREENS.who = function () {
       busy('Saving\u2026');
       return call('saveItem', it.key, it.name, ch, S.role).then(function (r) {
         done(); S.boot = null;
-        toast(r.skipped && r.skipped.length ? 'Saved! (The sheet has no column for ' + r.skipped.join(', ') + ' yet, so those were skipped.)' : '\u2705 Saved', 'good');
+        pointsNote(r, r.skipped && r.skipped.length ? 'Saved! (The sheet has no column for ' + r.skipped.join(', ') + ' yet, so those were skipped.)' : '\u2705 Saved');
         S.history.pop(); go('item', { key: it.key }, true);
       });
     }).catch(oops);
@@ -1452,6 +1753,7 @@ SCREENS.who = function () {
       } else if (A.step === 2) {
         h += '<div class="card skyL"><h2>2. What is it?</h2><p class="hint">Whatever you\u2019d call it, e.g. \u201C' + esc(W('nameExample', 'Blue robot - 1985 boxed')) + '\u201D.</p>' +
           '<input type="text" id="addName" value="' + esc(A.name) + '" placeholder="Name" autocomplete="off" enterkeyhint="next">' +
+          addBarcodeBox(A) +
           '<div class="stack" style="margin-top:12px"><button class="btn green full" data-act="addNext">Next \u2192</button><button class="btn full" data-act="addBack">\u2190 Back</button></div></div>';
       } else if (A.step === 3) {
         h += '<div class="card pinkL"><h2>3. Which range?</h2><input type="search" id="rangeFilter" placeholder="\uD83D\uDD0D Find a range" aria-label="Find a range"><div class="choice" id="rangeChoices" style="margin-top:10px">' +
@@ -1468,6 +1770,7 @@ SCREENS.who = function () {
           (isPriv() ? '<label class="field" for="a_paid">Price paid ' + (THEME.currency || '\u00A3') + ' (private)</label><input type="text" id="a_paid" inputmode="decimal" value="' + esc(A.more.paid || '') + '">' +
             '<label class="field" for="a_where">Where from</label><input type="text" id="a_where" value="' + esc(A.more.whereBought || '') + '">' : '') +
           '<label class="field" for="a_notes">Notes</label><textarea id="a_notes">' + esc(A.more.notes || '') + '</textarea></details>' +
+          addBarcodeBox(A) +
           '<div class="warn" style="margin-top:12px"><b>Check:</b> ' + esc(A.name) + ' \u00B7 ' + esc(A.range) + ' \u00B7 ' + (A.condition ? esc(A.condition) : '<i>pick a condition</i>') + ' \u00B7 ' + A.shots.length + ' photo' + (A.shots.length === 1 ? '' : 's') + (A.barcode ? ' \u00B7 barcode ' + esc(A.barcode) : '') + '</div>' +
           '<div class="stack"><button class="btn main full" data-act="addSave"' + (A.condition ? '' : ' disabled') + '>\uD83D\uDCBE Save to the collection</button><button class="btn full" data-act="addBack">\u2190 Back</button></div></div>';
       }
@@ -1492,7 +1795,7 @@ SCREENS.who = function () {
         if (!hits.length) { A.step = 3; go('add', {}, true); return; }
         var body = '<p>Looks like you might already have:</p><ul>' + hits.map(function (x) { return '<li><b>' + esc(x.name) + '</b> <span class="muted">(' + esc(x.range) + ')</span></li>'; }).join('') + '</ul><p>Is this a different one, or a second copy?</p>';
         sheet('Already got it?', body, [{ label: 'It\u2019s a different one - carry on', value: 'go', cls: 'main' }, { label: 'Open the one I\u2019ve got', value: 'open' }, { label: 'Change the name', value: 'stay' }])
-          .then(function (v) { if (v === 'go') { A.step = 3; go('add', {}, true); } else if (v === 'open') { go('item', { key: hits[0].key }); } });
+          .then(function (v) { if (v === 'go') { A.step = 3; go('add', {}, true); } else if (v === 'open') { go(S.kid ? 'kidItem' : 'item', { key: hits[0].key }); } });
       }).catch(function (e) { done(); A.step = 3; go('add', {}, true); });
       return;
     }
@@ -1518,9 +1821,10 @@ SCREENS.who = function () {
         done(); S.add = null; S.boot = null;
         var body = (r.queued ? '<p>\uD83D\uDCF4 No signal, so <b>' + esc(r.name) + '</b> and ' + n + ' photo' + (n === 1 ? ' is' : 's are') + ' saved on the phone. They\u2019ll go into the sheet and Drive as soon as you\u2019re back online.</p>' :
           '<p><b>' + esc(r.name) + '</b> is in the collection' + (r.id ? ' as <b>' + esc(r.id) + '</b>' : '') + ', with its own folder and ' + n + ' photo' + (n === 1 ? '' : 's') + '.</p>') +
+          (r.points ? '<p><b>+' + r.points + ' points!</b></p>' : '') +
           (failed ? '<div class="nudge">' + failed + ' photo' + (failed === 1 ? '' : 's') + ' didn\u2019t go through - open the item and tap \u201CAdd photo\u201D to try again.</div>' : '');
         return sheet('\uD83C\uDF89 Added!', body, [{ label: 'Open it', value: 'open', cls: 'main' }, { label: 'Add another', value: 'again' }, { label: 'Home', value: 'home' }]).then(function (x) {
-          if (x === 'open') go('item', { key: r.key }); else if (x === 'again') go('add', {}, true); else go('home');
+          if (x === 'open') go(S.kid ? 'kidItem' : 'item', { key: r.key }); else if (x === 'again') go('add', {}, true); else go(S.kid ? 'kid' : 'home');
         });
       });
     }).catch(oops);
@@ -1581,7 +1885,7 @@ SCREENS.who = function () {
       if (!ok) return;
       busy('Moving it into the collection\u2026');
       return call('markGotIt', w.kind, w.ref, w.name, S.role).then(function (r) {
-        done(); S.boot = null; toast('\u2705 Nice one! It\u2019s in the collection now.', 'good');
+        done(); S.boot = null; pointsNote(r, '\u2705 Nice one! It\u2019s in the collection now.');
         return confirmSheet('Snap it now?', 'Take a photo of <b>' + esc(r.name) + '</b> while it\u2019s in your hand?', '\uD83D\uDCF7 Take photo', 'Later').then(function (snap) {
           if (snap) openCamera({ key: r.key, name: r.name }); else go('wanted', {}, true);
         });
@@ -1690,7 +1994,10 @@ SCREENS.who = function () {
       ['checklists', '\u2705', 'Checklists', 'How close each full set is'],
       ['photos', '\uD83D\uDCF8', 'Photos to take', 'Items still needing our own photos']
     ];
-    if (isPriv()) tiles.push(['value', '\uD83D\uDCB7', 'Value', 'Private: totals, top 10, paid vs value']);
+    if (isPriv()) {
+      tiles.push(['rewards', '\u2B50', KID_ROLE + '\u2019s rewards', 'Points, photo approvals, activity log']);
+      tiles.push(['value', '\uD83D\uDCB7', 'Value', 'Private: totals, top 10, paid vs value']);
+    }
     tiles.push(['export', '\uD83D\uDCE4', 'Export', 'Save a list as a spreadsheet file or PDF'],
       ['help', '\u2753', 'Help', 'How everything works'],
       ['settings', '\u2699\uFE0F', 'Settings', 'Switch user, tour, links']);
@@ -1705,7 +2012,7 @@ SCREENS.who = function () {
     ['\uD83D\uDCF8 Photos', ['Open any item and tap <b>Add photo / video</b>. It saves straight into that item\u2019s own Drive folder.', 'Tap <b>New main photo</b> to replace the picture that shows in the lists. The old one stays in the folder - nothing is deleted.', 'Tap any photo to see it big, then <b>Make main photo</b> to pick a different main one.', 'No faces in shot, please. Hands are fine.']],
     ['\uD83E\uDD14 Do I own it? + barcode scan', ['Type any name in <b>Do I own it?</b> on Home - it tells you yes, maybe or no as you type, even with spelling mistakes.', 'Tap <b>\uD83D\uDCF7 Scan</b> and point the camera at a box\u2019s barcode. If the barcode is saved on an item it matches straight away.', 'First time for a barcode? Search the name and tap the item to save the barcode on it. Or open any item and tap <b>Save barcode</b>.']],
     ['\uD83D\uDCF4 No signal', ['The last collection you opened is kept on the phone, with photos you\u2019ve already seen.', 'Adds, edits, ticks and photos made with no signal are kept on the phone and sync on their own when you\u2019re back online.']],
-    ['\uD83E\uDDD2 ' + KID_ROLE + '\u2019s mode', ['Big buttons and photos, no prices. Tick off finds on the hunt list and add photos.', 'The <b>\uD83C\uDFC6 Badges</b> wall unlocks badges from the collection (10 Funkos, first rare find, finds this month, photos added\u2026) with confetti for each new one. No money badges, and secret or Christmas things never count.', 'Getting back to the full app needs ' + esc(THEME.privateRole) + '\u2019s PIN.']],
+    ['\uD83E\uDDD2 ' + KID_ROLE + '\u2019s mode', ['Big buttons and photos, no prices. Tick off finds on the hunt list and add photos.', 'A <b>letter from Dad</b> opens the first time each day, and you can read it again any time from the Home tile.', 'The <b>\u2B50 My points</b> page awards points for photos (once Dad says yes), ticks and new finds, with levels and real rewards Dad sets. Secret or hidden things never earn points, and there is never any money.', 'The <b>\uD83C\uDFC6 Badges</b> wall unlocks badges from the collection (10 Funkos, first rare find, finds this month, photos added\u2026) with confetti for each new one. No money badges, and secret or Christmas things never count.', 'Getting back to the full app needs ' + esc(THEME.privateRole) + '\u2019s PIN.']],
     ['\uD83D\uDD0D Finding things', ['Use the search box on Home or in Collection. It searches names, characters, lines and IDs.', 'Tap <b>Filters</b> to narrow down by category, line, condition, status, posted or photos.', 'Use the sort menu for newest first, A to Z or by year.']],
     ['\u2B50 Wanted and missing', ['<b>Wanted</b> is your hunt list. Tap <b>Got it</b> when one arrives and it moves into the collection.', '<b>Missing list</b> (under More) shows everything still needed from every full-set checklist in one place.', '<b>Checklists</b> shows how close each set is.']],
     ['\uD83D\uDCE3 Posted on socials', ['Each item page has the platforms as buttons. Tap one to tick it once it\u2019s posted.', 'Under More \u2192 <b>Posted on socials</b> you can see what hasn\u2019t been posted yet - handy for planning.']],
@@ -2294,7 +2601,7 @@ SCREENS.who = function () {
       case 'gotItem':
         confirmSheet('Got it? \uD83C\uDF89', 'Mark <b>' + esc(S.current.name) + '</b> as Owned?', 'Yes, got it!', 'Not yet').then(function (ok) {
           if (!ok) return; busy('Saving\u2026');
-          return call('markGotIt', 'item', S.current.key, S.current.name, S.role).then(function () { done(); S.boot = null; toast('\u2705 It\u2019s officially ours!', 'good'); go('item', S.params, true); });
+          return call('markGotIt', 'item', S.current.key, S.current.name, S.role).then(function (r) { done(); S.boot = null; pointsNote(r, '\u2705 It\u2019s officially ours!'); go('item', S.params, true); });
         }).catch(oops); break;
       case 'addSnap': openCamera({ mode: 'add' }); break;
       case 'addPick': openCamera({ mode: 'add' }, true); break;
@@ -2337,6 +2644,17 @@ SCREENS.who = function () {
       case 'bcAddNew':
         $('sheet').hidden = true; S.add = { step: 1, shots: [], name: '', range: '', condition: '', more: {}, barcode: S.lastCode }; go('add'); break;
       case 'syncNow': syncQueue(); break;
+      case 'letterOpen': showDadLetter(true); break;
+      case 'letterGo': hideDadLetter(); break;
+      case 'rwAsk': askReward(el.getAttribute('data-id')); break;
+      case 'rwYes': decideRewardUI(el.getAttribute('data-id'), true); break;
+      case 'rwNo': decideRewardUI(el.getAttribute('data-id'), false); break;
+      case 'rwPhotoYes': decidePhotoUI(el.getAttribute('data-id'), true, !!(el.closest('.rwItem') && el.closest('.rwItem').querySelector('.qMain') && el.closest('.rwItem').querySelector('.qMain').checked)); break;
+      case 'rwPhotoNo': decidePhotoUI(el.getAttribute('data-id'), false, false); break;
+      case 'rwSave': saveRewardsUI(); break;
+      case 'addScan': keepAddName(); openScanner({ add: true }); break;
+      case 'addTypeBc': keepAddName(); SCAN.opts = { add: true }; typeCode(); break;
+      case 'addClearBc': addState().barcode = ''; go('add', {}, true); break;
       case 'kidEnter': enterKid(); break;
       case 'kidExit': exitKid(); break;
       case 'kidItem': $('sheet').hidden = true; go('kidItem', { key: key }); break;
@@ -2347,13 +2665,13 @@ SCREENS.who = function () {
       case 'kidGotItem':
         confirmSheet('We got it? \uD83C\uDF89', 'Mark <b>' + esc(S.current.name) + '</b> as ours?', 'Yes!', 'Not yet').then(function (ok) {
           if (!ok) return; busy('Saving\u2026');
-          return call('markGotIt', 'item', S.current.key, S.current.name, KID_ROLE).then(function () { done(); bumpKid('kidFound'); S.current.status = 'Owned'; S.boot = null; toast('\uD83C\uDF89 It\u2019s ours!', 'good'); go('kidItem', S.params, true); });
+          return call('markGotIt', 'item', S.current.key, S.current.name, KID_ROLE).then(function (r) { done(); bumpKid('kidFound'); S.current.status = 'Owned'; S.boot = null; pointsNote(r, '\uD83C\uDF89 It\u2019s ours!'); go('kidItem', S.params, true); });
         }).catch(oops); break;
     }
   });
   $('stuckBtn').addEventListener('click', function () {
     if (!S.kid) return showHelp();
-    sheet('How it works', '<ul><li>\uD83E\uDDF8 <b>Our stuff</b>: tap anything to see it big or add a photo.</li><li>\u2B50 <b>Hunt</b>: things we\u2019re looking for. Found one? Tap \u201CFound it!\u201D</li><li>\uD83D\uDCF7 <b>Scan</b>: point at a box\u2019s barcode to see if we\u2019ve got it.</li><li>No faces in photos - hands are fine.</li></ul>',
+    sheet('How it works', '<ul><li>\uD83E\uDDF8 <b>Our stuff</b>: tap anything to see it big or add a photo.</li><li>\u2B50 <b>Hunt</b>: things we\u2019re looking for. Found one? Tap \u201CFound it!\u201D</li><li>\uD83D\uDCF7 <b>Scan</b>: point at a box\u2019s barcode to see if we\u2019ve got it.</li><li>\u2709\uFE0F <b>Letter from Dad</b>: how it all started. It pops up once a day, and you can open it again any time.</li><li>\u2B50 <b>My points</b>: earn points and ask Dad for rewards.</li><li>No faces in photos - hands are fine.</li></ul>',
       [{ label: '\u21BB Refresh', value: 'refresh' }, { label: 'Got it!', value: 'ok', cls: 'main' }]).then(function (v) { if (v === 'refresh') { S.boot = null; thumbsRefresh(); go(S.screen || 'kid', S.params, true); } });
   });
   $('homeBtn').addEventListener('click', function () { if (S.kid) { S.history = []; go('kid', {}, true); return; } if (S.role) { S.history = []; go(S.screen === 'home' ? 'settings' : 'home', {}, true); } });
