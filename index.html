@@ -204,6 +204,52 @@
   .pinKey.spacer { visibility: hidden; pointer-events: none; border: 0; background: none; }
   .pinCard.bad .pinDots { animation: pinShake 0.35s ease-in-out; }
   @keyframes pinShake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-8px); } 75% { transform: translateX(8px); } }
+
+  /* ---- v4: Do I own it?, value, deals, offline bar, scanner, Son's mode ---- */
+  .ownCard { background: var(--white); }
+  .ownLabel { display: block; font-size: 22px; font-weight: 900; margin-bottom: 8px; }
+  .ownRow { display: flex; gap: 8px; align-items: stretch; }
+  .ownInput { flex: 1; min-width: 0; font-size: 22px !important; min-height: 60px; padding: 10px 14px; border: 4px solid var(--ink); border-radius: 16px; font-weight: 700; width: 100%; box-sizing: border-box; font-family: inherit; color: var(--ink); background: var(--white); }
+  .scanBtn { min-width: 76px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 26px; line-height: 1; padding: 6px 10px; }
+  .scanBtn small { font-size: 13px; font-weight: 800; margin-top: 3px; }
+  .own { margin-top: 12px; border: 4px solid var(--ink); border-radius: 16px; padding: 12px; }
+  .own.yes { background: #C9F2D2; } .own.maybe { background: #FFF3C4; } .own.no { background: #FFD6CC; }
+  .ownHead { font-size: 22px; font-weight: 900; margin-bottom: 6px; }
+  .own .list { margin-top: 8px; }
+  .ownLi { width: 100%; text-align: left; font-family: inherit; color: inherit; cursor: pointer; font-size: 16px; }
+  .valueCard .big { font-size: 38px; }
+  .vchg { font-weight: 900; font-size: 18px; } .vchg.up { color: #1E6B3A; } .vchg.down { color: #8A3A12; } .vchg small { font-weight: 700; opacity: .8; }
+  .tbBadge { position: absolute; top: 4px; margin-left: 26px; background: var(--red); color: var(--white); border: 2px solid var(--white); border-radius: 999px; font-size: 12px; font-weight: 900; min-width: 20px; height: 20px; line-height: 16px; text-align: center; padding: 0 4px; box-sizing: border-box; }
+  nav#tabbar button { position: relative; }
+  .dealsCard { background: #FFD6CC; }
+  .li.deal { background: #FFF0EB; border-color: var(--red); }
+  .li.deal .grow small + small { opacity: 1; font-weight: 800; }
+  .netBar { margin: 0 0 12px; padding: 10px 12px; border-radius: 14px; border: 3px solid var(--ink); font-weight: 700; font-size: 15px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .netBar.off { background: #FFE2A8; } .netBar.sync { background: var(--skyL); }
+  .scanBox { position: fixed; inset: 0; z-index: 55; background: #000; display: flex; flex-direction: column; }
+  .scanBox video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .scanFrame { position: absolute; left: 8%; right: 8%; top: 34%; height: 24%; border: 4px solid var(--yel); border-radius: 18px; box-shadow: 0 0 0 9999px rgba(0,0,0,.45); overflow: hidden; }
+  .scanLine { position: absolute; left: 4%; right: 4%; top: 50%; height: 3px; background: var(--red); box-shadow: 0 0 8px var(--red); animation: scanMove 1.6s ease-in-out infinite alternate; }
+  @keyframes scanMove { from { top: 15%; } to { top: 85%; } }
+  .scanTop { position: absolute; top: calc(14px + env(safe-area-inset-top)); left: 12px; right: 12px; color: #fff; text-align: center; text-shadow: 0 1px 3px #000; display: flex; flex-direction: column; gap: 4px; }
+  .scanTop b { font-size: 22px; } .scanTop small { font-size: 15px; font-weight: 700; }
+  .scanBtns { position: absolute; left: 12px; right: 12px; bottom: calc(18px + env(safe-area-inset-bottom)); display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  .scanBtns .btn { flex: 1 1 30%; min-height: 56px; }
+  .kidHead { display: flex; align-items: center; gap: 12px; } .kidHead .mascot { width: 72px; margin: 0; } .kidHead h1 { font-size: 30px; margin: 0; }
+  .kgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .kbig { border: 4px solid var(--ink); border-radius: 24px; min-height: 150px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-family: inherit; color: var(--ink); cursor: pointer; padding: 10px; }
+  .kbig span { font-size: 48px; line-height: 1; } .kbig b { font-size: 21px; font-weight: 900; } .kbig small { font-size: 14px; font-weight: 700; }
+  .kbig.yel { background: var(--yel); } .kbig.pink { background: var(--pink); } .kbig.skyL { background: var(--skyL); } .kbig.green { background: var(--green); }
+  .kstuff { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .ktile { background: var(--white); border: 4px solid var(--ink); border-radius: 20px; overflow: hidden; padding: 0; display: flex; flex-direction: column; font-family: inherit; color: var(--ink); cursor: pointer; text-align: center; }
+  .ktile .thumb { font-size: 44px; } .kname { font-size: 17px; font-weight: 900; padding: 8px 6px 10px; line-height: 1.2; }
+  .khero { width: 100%; aspect-ratio: 1/1; max-height: 60vh; background: var(--skyL); border: 4px solid var(--ink); border-radius: 20px; display: flex; align-items: center; justify-content: center; overflow: hidden; font-size: 70px; }
+  .khero img { width: 100%; height: 100%; object-fit: contain; background: var(--white); }
+  .kidItem h1 { font-size: 26px; margin: 12px 0 6px; }
+  .kbtn { min-height: 64px; font-size: 21px; }
+  .khunt { display: flex; flex-direction: column; gap: 12px; }
+  .khuntCard { background: var(--white); border: 4px solid var(--ink); border-radius: 20px; padding: 14px; display: flex; flex-direction: column; gap: 6px; }
+  .khuntCard b { font-size: 20px; } .khuntCard small { font-weight: 700; opacity: .75; }
   [hidden] { display: none !important; }
 </style>
 
@@ -253,14 +299,14 @@
   (function () {
     'use strict';
     var API = "https://script.google.com/macros/s/AKfycbwSO6lF3RuWl0oihI0plwrpb2UKTVDG699nbfXpsiD9y-ZIlRxf44L4SZgw7whRzpeF/exec";
-    var VER = "v3c-20261121";
+    var VER = "v4-20261121";
     // Plain fetch with no cookies, so Google's multi-account sign-in never gets involved.
     function post(fn, args) {
       return fetch(API, {
         method: 'POST', credentials: 'omit', redirect: 'follow', cache: 'no-store',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ fn: fn, args: args || [] })
-      }).then(function (r) {
+      }).catch(function (e) { var x = new Error('No signal'); x.network = true; throw x; }).then(function (r) {
         if (!r.ok) throw new Error('Hmm, that didn\u2019t work. Check you\u2019ve got signal and try again - nothing\u2019s been lost.');
         return r.json();
       }).then(function (j) {

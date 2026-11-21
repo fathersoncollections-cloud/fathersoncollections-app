@@ -9,7 +9,8 @@
   var S = {
     role: LS.get('role'), boot: null, items: [], thumbs: {}, screen: '', params: {}, history: [],
     pinDigits: '', pinBusy: false, pinError: '', pendingRole: '',
-    filters: { q: '', range: '', series: '', status: '', cond: '', posted: '', photos: '', sort: 'newest' }, shown: 60, add: null, camTarget: null
+    filters: { q: '', range: '', series: '', status: '', cond: '', posted: '', photos: '', sort: 'newest' }, shown: 60, add: null, camTarget: null,
+    kid: LS.get('kidMode') === '1', homeWanted: null
   };
   var PRIV = THEME.privateRole;
   function dadUnlocked() {
@@ -51,14 +52,526 @@
   function pct(a, b) { return b ? Math.round(a * 100 / b) : 0; }
   function norm(s) { return String(s || '').toLowerCase().replace(/[\u2019'`]/g, '').replace(/[^a-z0-9#]+/g, ' ').trim(); }
 
-  function call(fn) {
-    var args = Array.prototype.slice.call(arguments, 1);
-    args.push(LS.get('dadToken') || '');
+  /* ================= v4: offline layer (IndexedDB copy of the last data + a queue of changes) ================= */
+  function noop() {}
+  var IDB = (function () {
+    var dbp = null;
+    function db() {
+      if (!dbp) dbp = new Promise(function (res, rej) {
+        if (!window.indexedDB) return rej(new Error('no idb'));
+        var r = indexedDB.open('fatherson-app', 1);
+        r.onupgradeneeded = function () { r.result.createObjectStore('kv'); r.result.createObjectStore('queue', { keyPath: 'id', autoIncrement: true }); };
+        r.onsuccess = function () { res(r.result); };
+        r.onerror = function () { rej(r.error); };
+      });
+      return dbp;
+    }
+    function tx(store, mode, fn) {
+      return db().then(function (d) {
+        return new Promise(function (res, rej) {
+          var t = d.transaction(store, mode), req = fn(t.objectStore(store));
+          t.oncomplete = function () { res(req ? req.result : undefined); };
+          t.onerror = function () { rej(t.error); }; t.onabort = function () { rej(t.error); };
+        });
+      });
+    }
+    return {
+      get: function (k) { return tx('kv', 'readonly', function (s) { return s.get(k); }); },
+      set: function (k, v) { return tx('kv', 'readwrite', function (s) { return s.put(v, k); }); },
+      qAdd: function (v) { return tx('queue', 'readwrite', function (s) { return s.add(v); }); },
+      qAll: function () { return tx('queue', 'readonly', function (s) { return s.getAll(); }); },
+      qDel: function (id) { return tx('queue', 'readwrite', function (s) { return s.delete(id); }); }
+    };
+  })();
+  var NET = {
+    offline: navigator.onLine === false, savedAt: 0, queueLen: 0,
+    down: function () { if (!this.offline) { this.offline = true; renderNetBar(); } },
+    ok: function () { if (this.offline) { this.offline = false; this.savedAt = 0; renderNetBar(); setTimeout(syncQueue, 300); } }
+  };
+  function rawCall(fn, args) {
     return new Promise(function (resolve, reject) {
       if (window.FS_API) return window.FS_API(fn, args).then(resolve, reject);
+      if (!window.google || !google.script) { var e0 = new Error('offline'); e0.network = true; return reject(e0); }
       google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)[fn].apply(null, args);
     });
   }
+  function isNetErr(e) {
+    if (navigator.onLine === false) return true;
+    return !!(e && (e.network || (e.name === 'TypeError' && /fetch|network|load failed/i.test(e.message || ''))));
+  }
+  function offlineErr() { return new Error('\uD83D\uDCF4 No signal right now, and this bit wasn\u2019t saved on the phone yet. It\u2019ll work again as soon as you\u2019re back online.'); }
+  var READ_FNS = { getBootstrap: 1, getWanted: 1, getChecklists: 1, getChecklist: 1, getItem: 1, getStats: 1, getAllMissing: 1, getPostedBoard: 1, getDuplicates: 1, getPhotoTodo: 1, getNoValue: 1, getValueSummary: 1, getItemPhotos: 1 };
+  var WRITE_FNS = { saveItem: 1, addItem: 1, markGotIt: 1, setPosted: 1, uploadMedia: 1, saveBarcode: 1, setMainPhoto: 1 };
+  function tokenNow() { return S.kid ? '' : (LS.get('dadToken') || ''); }   // Son's mode never sends the PIN token
+  function cacheKey(fn, args) { return 'c|' + fn + '|' + JSON.stringify(args) + '|' + (tokenNow() && dadUnlocked() ? 'p' : 'n'); }
+  function hasPending(args) { return args.some(function (a) { return typeof a === 'string' && a.indexOf('pending:') === 0; }); }
+  function call(fn) {
+    var args = Array.prototype.slice.call(arguments, 1);
+    var full = args.concat([tokenNow()]);
+    if (WRITE_FNS[fn]) {
+      if (NET.offline && navigator.onLine === false) return queueWrite(fn, args);
+      if (hasPending(args)) return queueWrite(fn, args);
+      return rawCall(fn, full).then(function (r) { NET.ok(); return r; }, function (e) { if (isNetErr(e)) { NET.down(); return queueWrite(fn, args); } throw e; });
+    }
+    if (READ_FNS[fn]) {
+      var ck = cacheKey(fn, args);
+      var fromCache = function () {
+        return IDB.get(ck).then(function (hit) {
+          if (hit) { NET.savedAt = hit.at; renderNetBar(); return hit.r; }
+          var f = offlineFallback(fn, args); if (f !== undefined) return f;
+          throw offlineErr();
+        }, function () { var f2 = offlineFallback(fn, args); if (f2 !== undefined) return f2; throw offlineErr(); });
+      };
+      if (navigator.onLine === false) { NET.down(); return fromCache(); }
+      return rawCall(fn, full).then(function (r) {
+        NET.ok();
+        if (fn !== 'getItemPhotos' || (r && r.length)) IDB.set(ck, { at: Date.now(), r: r }).catch(noop);
+        return r;
+      }, function (e) { if (!isNetErr(e)) throw e; NET.down(); return fromCache(); });
+    }
+    return rawCall(fn, full).then(function (r) { NET.ok(); return r; }, function (e) { if (isNetErr(e)) { NET.down(); throw offlineErr(); } throw e; });
+  }
+  function offlineFallback(fn, args) {
+    if (fn === 'getItem') {
+      var it = itemByKey(args[0]); if (!it) return undefined;
+      var o = JSON.parse(JSON.stringify(it));
+      o.platforms = (THEME.platforms || []).map(function (p) { return { key: p.key, label: p.label, icon: p.icon, yes: (it.pp || []).indexOf(p.key) >= 0 }; });
+      o.offlineCopy = true; return o;
+    }
+    if (fn === 'getItemPhotos') return [];
+    if (fn === 'getWanted') return [];
+    return undefined;
+  }
+  function queueWrite(fn, args) {
+    var res = { ok: true, queued: true }, pk = '';
+    if (fn === 'addItem' || (fn === 'markGotIt' && args[0] === 'wanted')) {
+      pk = 'pending:' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      res.key = pk; res.id = ''; res.folderId = ''; res.name = fn === 'addItem' ? args[0].name : args[2];
+    }
+    if (fn === 'markGotIt' && args[0] !== 'wanted') { res.key = args[0] === 'item' ? args[1] : ''; res.name = args[2]; }
+    if (fn === 'saveItem') { res.written = Object.keys(args[2] || {}); res.skipped = []; }
+    if (fn === 'uploadMedia') res.fileName = 'the photo (kept on the phone until you\u2019re back online)';
+    if (fn === 'saveBarcode') res.barcode = args[2];
+    var entry = { fn: fn, args: args, at: Date.now(), pk: pk };
+    return IDB.qAdd(entry).then(function () {
+      NET.queueLen++; applyQueued(entry); renderNetBar(); return res;
+    }, function () { throw offlineErr(); });
+  }
+  /* Show queued (not yet synced) changes straight away, so the phone looks right offline. */
+  function applyQueued(en) {
+    var a = en.args, it;
+    if (!S.items) return;
+    if (en.fn === 'addItem') {
+      if (!itemByKey(en.pk)) S.items.unshift({ key: en.pk, id: '', name: a[0].name, range: a[0].range || 'Other', status: a[0].status || 'Owned', condition: a[0].condition || 'Unknown', folderId: '', pp: [], pending: true });
+    } else if (en.fn === 'markGotIt' && a[0] === 'wanted') {
+      if (!itemByKey(en.pk)) S.items.unshift({ key: en.pk, id: '', name: a[2], range: 'Other', status: 'Owned', condition: 'Unknown', folderId: '', pp: [], pending: true });
+    } else if (en.fn === 'markGotIt' && a[0] === 'item') {
+      it = itemByKey(a[1]); if (it) it.status = 'Owned';
+    } else if (en.fn === 'saveItem') {
+      it = itemByKey(a[0]); if (it) Object.keys(a[2] || {}).forEach(function (k) { if (['name', 'range', 'condition', 'packaging', 'status', 'series', 'character', 'maker', 'year'].indexOf(k) >= 0) it[k] = a[2][k]; });
+    } else if (en.fn === 'saveBarcode') {
+      it = itemByKey(a[0]); if (it) it.bc = String(a[2]);
+    }
+  }
+  var syncing = false;
+  function syncQueue() {
+    if (syncing || navigator.onLine === false) return Promise.resolve();
+    syncing = true;
+    var doneN = 0, failed = [];
+    return IDB.qAll().then(function (list) {
+      NET.queueLen = list.length;
+      if (!list.length) return;
+      renderNetBar('Syncing ' + list.length + ' change' + (list.length === 1 ? '' : 's') + '\u2026');
+      return IDB.get('pendingMap').then(function (pm) {
+        pm = pm || {};
+        return list.reduce(function (p, en) {
+          return p.then(function () {
+            var a = en.args.map(function (x) { return typeof x === 'string' && pm[x] ? pm[x] : x; });
+            if (hasPending(a)) { failed.push({ fn: en.fn, error: 'the item it belonged to didn\u2019t save' }); return IDB.qDel(en.id); }
+            return rawCall(en.fn, a.concat([tokenNow()])).then(function (r) {
+              if (en.pk && r && r.key) pm[en.pk] = r.key;
+              doneN++; NET.queueLen = Math.max(0, NET.queueLen - 1);
+              return IDB.qDel(en.id);
+            }, function (e) {
+              if (isNetErr(e)) throw e;
+              failed.push({ fn: en.fn, name: (en.fn === 'addItem' ? a[0].name : a[1]) || '', error: (e && e.message) || 'error' });
+              NET.queueLen = Math.max(0, NET.queueLen - 1);
+              return IDB.qDel(en.id);
+            });
+          });
+        }, Promise.resolve()).then(function () { return IDB.set('pendingMap', pm); }, function (e) { IDB.set('pendingMap', pm); throw e; });
+      });
+    }).then(function () {
+      syncing = false; renderNetBar();
+      if (doneN || failed.length) {
+        S.boot = null;
+        if (doneN) toast('\u2705 Back online - ' + doneN + ' change' + (doneN === 1 ? '' : 's') + ' synced to the sheet', 'good');
+        if (failed.length) sheet('A couple of things didn\u2019t sync', '<ul>' + failed.map(function (f) { return '<li><b>' + esc(f.name || f.fn) + '</b>: ' + esc(f.error) + '</li>'; }).join('') + '</ul><p class="hint">Nothing was deleted. Try those again now you\u2019re online.</p>');
+        if (['home', 'collection', 'kid', 'kidStuff', 'kidHunt', 'wanted'].indexOf(S.screen) >= 0) go(S.screen, S.params, true);
+      }
+    }, function () { syncing = false; renderNetBar(); });
+  }
+  function fmtWhen(ms) {
+    var d = new Date(ms);
+    return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ' ' + d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  }
+  function netBarHtml(msg) {
+    if (msg) return '<div id="netBar" class="netBar sync">\u23F3 ' + esc(msg) + '</div>';
+    if (NET.offline) return '<div id="netBar" class="netBar off">\uD83D\uDCF4 No signal - showing the copy saved on this phone' + (NET.savedAt ? ' (from ' + esc(fmtWhen(NET.savedAt)) + ')' : '') + '.' +
+      (NET.queueLen ? ' <b>' + NET.queueLen + ' change' + (NET.queueLen === 1 ? '' : 's') + '</b> will sync when you\u2019re back online.' : ' You can still look, add and edit - it\u2019ll sync later.') + '</div>';
+    if (NET.queueLen) return '<div id="netBar" class="netBar sync">\u23F3 ' + NET.queueLen + ' change' + (NET.queueLen === 1 ? '' : 's') + ' waiting to sync <button class="btn small" data-act="syncNow">Sync now</button></div>';
+    return '<div id="netBar" hidden></div>';
+  }
+  function renderNetBar(msg) {
+    var el = $('netBar'); if (!el) return;
+    var t = document.createElement('div'); t.innerHTML = netBarHtml(msg);
+    el.parentNode.replaceChild(t.firstChild, el);
+  }
+  window.addEventListener('online', function () { NET.ok(); syncQueue(); });
+  window.addEventListener('offline', function () { NET.down(); });
+  /* thumbnails are kept on the phone too, so photos still show with no signal */
+  var thumbSaveTimer = null;
+  function saveThumbsSoon() {
+    clearTimeout(thumbSaveTimer);
+    thumbSaveTimer = setTimeout(function () {
+      var keep = {}; Object.keys(S.thumbs).forEach(function (k) { if (S.thumbs[k]) keep[k] = S.thumbs[k]; });
+      IDB.get('thumbs').then(function (old) { var m = old || {}; Object.keys(keep).forEach(function (k) { m[k] = keep[k]; }); return IDB.set('thumbs', m); }).catch(noop);
+    }, 1500);
+  }
+  function loadSavedThumbs() {
+    return IDB.get('thumbs').then(function (m) { Object.keys(m || {}).forEach(function (k) { if (S.thumbs[k] === undefined || S.thumbs[k] === null) S.thumbs[k] = m[k]; }); }).catch(noop);
+  }
+
+  /* ================= v4: never-show list (extra safety on the phone; the server already hides these) ================= */
+  function hz(s) { var x = 0x811c9dc5; for (var i = 0; i < s.length; i++) { x ^= s.charCodeAt(i); x = Math.imul(x, 16777619) >>> 0; } return x.toString(36); }
+  var HIDE_SETS = [['1wgy7nv','1d6zpta','mfmdd6'],['1wgy7nv','1d6zpta','1l63qgk'],['1d6zpta','mfmdd6','hsvxxv'],['1d6zpta','1l63qgk','hsvxxv'],['9z0ds4','rkam7y'],['9z0ds4','14uzzlw'],['4pxbrz','nlfd37'],['nylwcb'],['itm3ea','rk4q8w'],['1d6zpta','mfmdd6','3w6b96'],['tc6gpo','1l63qgk'],['tc6gpo','1ojryhf'],['1wgq10c','cftjjb'],['ckzsb7','ms7go9','nylwcb'],['1nvng9d','ms7go9','nylwcb']];
+  function neverShow(name) {
+    var s = String(name || '');
+    if (/#\s*194[5-9]\b/.test(s)) return true;
+    var toks = norm(s.replace(/&/g, ' and ').replace(/#/g, ' ')).split(' '), hs = {};
+    toks.forEach(function (t) { if (t) hs[hz(t)] = 1; });
+    if (hs.fqi58g && toks.some(function (t) { return /^194[5-9]$/.test(t); })) return true;
+    return HIDE_SETS.some(function (set) { return set.every(function (h) { return hs[h]; }); });
+  }
+  /* Son's mode also leaves out anything Christmassy or gift-related, to be safe */
+  function kidSafe(it) {
+    if (!it || neverShow(it.name)) return false;
+    var t = [it.name, it.range, it.series].join(' ');
+    return !/christmas|xmas|x-mas|secret|gift|present|santa/i.test(t);
+  }
+
+  /* ================= v4: fuzzy "Do I own it?" ================= */
+  var OWNED_ST = ['Owned', 'On order', 'For sale'];
+  function isOwned(it) { return OWNED_ST.indexOf(it.status || 'Owned') >= 0; }
+  function fz(s) { return norm(String(s || '').replace(/&/g, ' and ').replace(/#/g, ' ')); }
+  function lev(a, b) {
+    if (Math.abs(a.length - b.length) > 2) return 9;
+    var prev = [], cur, i, j;
+    for (j = 0; j <= b.length; j++) prev[j] = j;
+    for (i = 1; i <= a.length; i++) {
+      cur = [i];
+      for (j = 1; j <= b.length; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = cur;
+    }
+    return prev[b.length];
+  }
+  function fuzzyScore(q, qt, it) {
+    if (!it._fz) { it._fzName = fz(it.name); it._fz = fz([it.name, it.character, it.series, it.range, it.id, it.maker, it.year].join(' ')).split(' ').filter(Boolean); }
+    if (it._fzName.indexOf(q) >= 0) return 1;
+    var sum = 0;
+    for (var i = 0; i < qt.length; i++) {
+      var w = qt[i], best = 0;
+      for (var k = 0; k < it._fz.length && best < 1; k++) {
+        var h = it._fz[k], s = 0;
+        if (h === w) s = 1;
+        else if (w.length >= 2 && h.indexOf(w) === 0) s = 0.9;
+        else if (w.length >= 3 && h.indexOf(w) >= 0) s = 0.75;
+        else if (w.length >= 4 && !/^\d+$/.test(w)) { var d = lev(w, h); if (d === 1) s = 0.72; else if (d === 2 && w.length >= 7) s = 0.55; }
+        if (s > best) best = s;
+      }
+      sum += best;
+    }
+    return qt.length ? sum / qt.length : 0;
+  }
+  function fuzzyFind(query, list, max) {
+    var q = fz(query), qt = q.split(' ').filter(Boolean);
+    if (!q) return [];
+    return list.map(function (it) { return { it: it, s: fuzzyScore(q, qt, it) }; })
+      .filter(function (x) { return x.s >= 0.45; })
+      .sort(function (a, b) { return b.s - a.s || a.it.name.length - b.it.name.length; }).slice(0, max || 6);
+  }
+  function ownResultHtml(query) {
+    var q = String(query || '').trim();
+    if (q.length < 2) return '';
+    var items = (S.items || []).filter(function (it) { return !neverShow(it.name) && (!S.kid || kidSafe(it)); });
+    var owned = fuzzyFind(q, items.filter(isOwned), 5);
+    var wantedItems = fuzzyFind(q, items.filter(function (it) { return it.status === 'Wanted'; }), 2);
+    var wl = fuzzyFind(q, (S.homeWanted || []).filter(function (w) { return !neverShow(w.name); }).map(function (w) { return { name: w.name, range: w.range, key: '', status: 'Wanted' }; }), 2);
+    var sold = fuzzyFind(q, items.filter(function (it) { return it.status === 'Sold'; }), 2);
+    var top = owned[0] ? owned[0].s : 0, h;
+    if (top >= 0.8) {
+      var strong = owned.filter(function (x) { return x.s >= 0.8; });
+      h = '<div class="own yes"><div class="ownHead">\u2705 Yes - you\u2019ve got ' + (strong.length > 1 ? strong.length + ' that match' : 'it') + '!</div>';
+    } else if (top >= 0.55) {
+      h = '<div class="own maybe"><div class="ownHead">\uD83E\uDD14 Not sure - is it one of these?</div>';
+    } else {
+      h = '<div class="own no"><div class="ownHead">\u274C Not in the collection</div>';
+      if (wantedItems.length || wl.length) h += '<p class="hint">\u2B50 But it\u2019s on the Wanted list: <b>' + esc((wantedItems[0] || wl[0]).it.name) + '</b></p>';
+      else h += '<p class="hint">Nothing owned matches \u201C' + esc(q) + '\u201D. Try fewer words, or scan the barcode.</p>';
+      if (sold.length && sold[0].s >= 0.8) h += '<p class="hint">You did have <b>' + esc(sold[0].it.name) + '</b> (marked Sold).</p>';
+    }
+    if (top >= 0.55) h += '<div class="list">' + owned.filter(function (x) { return x.s >= 0.55; }).map(function (x) {
+      return '<button class="li ownLi" data-act="item" data-key="' + esc(x.it.key) + '">' + thumbHtml(x.it) + '<div class="grow">' + esc(x.it.name) + '<small>' + esc([x.it.range, x.it.status !== 'Owned' ? x.it.status : '', x.it.condition && x.it.condition !== 'Unknown' ? x.it.condition : ''].filter(Boolean).join(' \u00B7 ')) + '</small></div><span>\u203A</span></button>';
+    }).join('') + '</div>';
+    return h + '</div>';
+  }
+  function bindOwnSearch(inputId, outId) {
+    var inp = $(inputId), out = $(outId), t = null; if (!inp || !out) return;
+    var run = function () { out.innerHTML = ownResultHtml(inp.value); watchThumbs(); };
+    inp.addEventListener('input', function () { clearTimeout(t); t = setTimeout(run, 120); });
+    if (inp.value) run();
+  }
+
+  /* ================= v4: barcodes ================= */
+  function bcDigits(c) { return String(c == null ? '' : c).replace(/[^0-9]/g, ''); }
+  function bcKey(c) { return bcDigits(c).replace(/^0+/, ''); }   // UPC-A and EAN-13 with a leading 0 are the same code
+  function localBarcodes() { try { return JSON.parse(LS.get('barcodes') || '{}') || {}; } catch (e) { return {}; } }
+  function itemBarcode(it) { return (it && (it.bc || localBarcodes()[it.key])) || ''; }
+  function itemsByBarcode(code) {
+    var k = bcKey(code); if (!k) return [];
+    return (S.items || []).filter(function (it) { var b = itemBarcode(it); return b && bcKey(b) === k && !neverShow(it.name) && (!S.kid || kidSafe(it)); });
+  }
+  function saveBarcodeTo(key, name, code) {
+    code = bcDigits(code);
+    var m = localBarcodes(); m[key] = code; LS.set('barcodes', JSON.stringify(m));
+    var it = itemByKey(key); if (it) it.bc = code;
+    busy('Saving the barcode\u2026');
+    return call('saveBarcode', key, name, code, S.role).catch(function (e) {
+      if (!/unknown action/i.test((e && e.message) || '')) throw e;
+      // Older Apps Script version (before the v4 update): keep it in Notes as "Barcode: 123..." instead.
+      return call('getItem', key, S.role).then(function (full) {
+        if (new RegExp('barcode\\s*[:#]?\\s*' + code).test(String(full.notes || '').replace(/\s/g, '').replace(/barcode:?/i, 'barcode:'))) return { ok: true, where: 'notes' };
+        var notes = String(full.notes || ''); notes = notes ? notes + ' | Barcode: ' + code : 'Barcode: ' + code;
+        return call('saveItem', key, name, { notes: notes }, S.role).then(function () { return { ok: true, where: 'notes' }; });
+      });
+    }).then(function (r) {
+      done();
+      toast(r && r.queued ? '\uD83C\uDFF7\uFE0F Barcode saved on the phone - it\u2019ll go into the sheet when you\u2019re back online' : '\uD83C\uDFF7\uFE0F Barcode saved - next time it\u2019ll match straight away', 'good');
+      return r;
+    }).catch(oops);
+  }
+  var SCAN = { stream: null, timer: null, det: undefined, zx: null, opts: null, last: '', hits: 0 };
+  var BC_FORMATS = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'itf'];
+  function loadZXing() {
+    if (window.ZXing) return Promise.resolve(window.ZXing);
+    return new Promise(function (res, rej) {
+      var s = document.createElement('script'); s.src = 'lib/zxing.min.js?v4';
+      s.onload = function () { if (window.ZXing) res(window.ZXing); else rej(new Error('zx')); };
+      s.onerror = function () { rej(new Error('The barcode reader didn\u2019t load - check your signal and try again.')); };
+      document.head.appendChild(s);
+    });
+  }
+  function getDetector() {
+    if (SCAN.det !== undefined) return Promise.resolve(SCAN.det);
+    if (!('BarcodeDetector' in window)) { SCAN.det = false; return Promise.resolve(false); }
+    return Promise.resolve(BarcodeDetector.getSupportedFormats ? BarcodeDetector.getSupportedFormats() : BC_FORMATS).then(function (f) {
+      var use = BC_FORMATS.filter(function (x) { return f.indexOf(x) >= 0; });
+      SCAN.det = use.indexOf('ean_13') >= 0 ? new BarcodeDetector({ formats: use }) : false; return SCAN.det;
+    }, function () { SCAN.det = false; return false; });
+  }
+  function zxReader(Z) {
+    if (SCAN.zx) return SCAN.zx;
+    var hints = new Map(), F = Z.BarcodeFormat;
+    hints.set(Z.DecodeHintType.POSSIBLE_FORMATS, [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.CODE_128, F.CODE_39, F.ITF]);
+    hints.set(Z.DecodeHintType.TRY_HARDER, true);
+    var r = new Z.MultiFormatReader(); r.setHints(hints); SCAN.zx = r; return r;
+  }
+  function zxCanvas(Z, cv) {
+    var r = zxReader(Z);
+    try { return r.decodeWithState(new Z.BinaryBitmap(new Z.HybridBinarizer(new Z.HTMLCanvasElementLuminanceSource(cv)))).getText(); }
+    catch (e) { return ''; } finally { try { r.reset(); } catch (e2) { /* ignore */ } }
+  }
+  /* Find a barcode in an image/canvas/video frame. Uses the phone's built-in reader when it has one, else ZXing. */
+  function detectIn(source, w, h) {
+    return getDetector().then(function (det) {
+      if (det) return det.detect(source).then(function (r) { return r && r[0] ? r[0].rawValue : ''; }, function () { return ''; });
+      return loadZXing().then(function (Z) {
+        var cv = document.createElement('canvas'), sc = Math.min(1, 1280 / Math.max(w, h));
+        cv.width = Math.round(w * sc); cv.height = Math.round(h * sc);
+        cv.getContext('2d').drawImage(source, 0, 0, cv.width, cv.height);
+        return zxCanvas(Z, cv);
+      });
+    });
+  }
+  function scanBox() {
+    var box = $('scanBox');
+    if (!box) {
+      box = document.createElement('div'); box.id = 'scanBox'; box.className = 'scanBox'; box.hidden = true;
+      box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true'); box.setAttribute('aria-label', 'Scan a barcode');
+      box.innerHTML = '<video id="scanVideo" playsinline muted autoplay></video><div class="scanFrame"><span class="scanLine"></span></div>' +
+        '<div class="scanTop"><b id="scanTitle">Point at the barcode</b><small id="scanMsg">Hold the box steady, about a hand\u2019s width away.</small></div>' +
+        '<div class="scanBtns"><button class="btn" data-act="scanType">\u2328\uFE0F Type it</button><button class="btn" data-act="scanPhoto">\uD83D\uDDBC\uFE0F From a photo</button><button class="btn main" data-act="scanClose">\u2715 Close</button></div>' +
+        '<input id="scanInput" type="file" accept="image/*" hidden>';
+      document.body.appendChild(box);
+      $('scanInput').addEventListener('change', function (e) { var f = e.target.files && e.target.files[0]; if (f) scanFromFile(f); });
+    }
+    return box;
+  }
+  function openScanner(opts) {
+    SCAN.opts = opts || {}; SCAN.last = ''; SCAN.hits = 0;
+    var box = scanBox(); box.hidden = false;
+    $('scanTitle').textContent = SCAN.opts.assign ? 'Scan the barcode for ' + SCAN.opts.assign.name : (S.kid ? 'Scan a box!' : 'Point at the barcode');
+    $('scanMsg').textContent = 'Hold the box steady, about a hand\u2019s width away.';
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { scanNoCamera(); return; }
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false }).then(function (stream) {
+      if (box.hidden) { stream.getTracks().forEach(function (t) { t.stop(); }); return; }
+      SCAN.stream = stream;
+      var v = $('scanVideo'); v.srcObject = stream; var pl = v.play(); if (pl && pl.catch) pl.catch(noop);
+      getDetector().then(function (det) { if (!det) return loadZXing(); }).catch(function (e) { $('scanMsg').textContent = e.message; });
+      var busyFrame = false;
+      SCAN.timer = setInterval(function () {
+        if (busyFrame || !v.videoWidth) return;
+        busyFrame = true;
+        detectIn(v, v.videoWidth, v.videoHeight).then(function (code) {
+          busyFrame = false;
+          code = bcDigits(code) || String(code || '').trim();
+          if (!code) return;
+          if (!SCAN.det) { if (code !== SCAN.last) { SCAN.last = code; return; } }   // ZXing: wait for 2 matching reads
+          gotCode(code);
+        }, function () { busyFrame = false; });
+      }, 220);
+    }, function () { scanNoCamera(); });
+  }
+  function scanNoCamera() {
+    $('scanTitle').textContent = 'The camera didn\u2019t open';
+    $('scanMsg').textContent = 'Allow the camera for this app, or take a photo of the barcode, or type the numbers under it.';
+  }
+  function stopScanner() {
+    clearInterval(SCAN.timer); SCAN.timer = null;
+    if (SCAN.stream) { SCAN.stream.getTracks().forEach(function (t) { t.stop(); }); SCAN.stream = null; }
+    var v = $('scanVideo'); if (v) v.srcObject = null;
+    var box = $('scanBox'); if (box) box.hidden = true;
+  }
+  function gotCode(code) {
+    if (!$('scanBox') || $('scanBox').hidden) return;
+    try { if (navigator.vibrate) navigator.vibrate(80); } catch (e) { /* ignore */ }
+    stopScanner(); handleCode(code);
+  }
+  function scanFromFile(file) {
+    $('scanMsg').textContent = 'Reading the photo\u2026';
+    var url = URL.createObjectURL(file), img = new Image();
+    img.onload = function () {
+      detectIn(img, img.naturalWidth, img.naturalHeight).then(function (code) {
+        URL.revokeObjectURL(url);
+        if (code) gotCode(bcDigits(code) || code);
+        else $('scanMsg').textContent = 'Couldn\u2019t spot a barcode in that photo. Get closer so the stripes fill the picture, or type the numbers.';
+      }, function (e) { URL.revokeObjectURL(url); $('scanMsg').textContent = (e && e.message) || 'Couldn\u2019t read that photo.'; });
+    };
+    img.onerror = function () { URL.revokeObjectURL(url); $('scanMsg').textContent = 'Couldn\u2019t open that photo.'; };
+    img.src = url;
+  }
+  function typeCode() {
+    var assign = SCAN.opts && SCAN.opts.assign;
+    stopScanner();
+    sheet('\u2328\uFE0F Type the barcode', '<p class="hint">The numbers under the stripes (usually 12 or 13 of them).</p><input type="text" id="bcTyped" inputmode="numeric" autocomplete="off" placeholder="e.g. 5012345678900" style="font-size:22px;letter-spacing:1px">',
+      [{ label: 'Check it', value: 'go', cls: 'main' }, { label: 'Cancel', value: '' }]).then(function (v) {
+      var code = bcDigits(($('bcTyped') || {}).value);
+      if (v !== 'go') return;
+      if (code.length < 6) { toast('That needs to be the numbers under the barcode (8 to 14 of them).', 'oops'); return; }
+      SCAN.opts = { assign: assign }; handleCode(code);
+    });
+    setTimeout(function () { if ($('bcTyped')) $('bcTyped').focus(); }, 80);
+  }
+  function handleCode(code) {
+    var opts = SCAN.opts || {}, digits = bcDigits(code);
+    if (!digits) { toast('That code isn\u2019t a product barcode (' + String(code).slice(0, 30) + ').', 'oops'); return; }
+    if (opts.assign) {
+      var a = opts.assign;
+      return confirmSheet('Save this barcode?', 'Save <b>' + esc(digits) + '</b> onto <b>' + esc(a.name) + '</b>? Next time you scan this box it\u2019ll match straight away.', 'Yes, save it', 'Cancel').then(function (ok) {
+        if (ok) saveBarcodeTo(a.key, a.name, digits).then(function () { if (S.screen === 'item') go('item', S.params, true); });
+      });
+    }
+    var hits = itemsByBarcode(digits);
+    var listHtml = function (list) {
+      return '<div class="list">' + list.map(function (it) {
+        return '<button class="li ownLi" data-act="' + (S.kid ? 'kidItem' : 'item') + '" data-key="' + esc(it.key) + '">' + thumbHtml(it) + '<div class="grow">' + esc(it.name) + '<small>' + esc([it.range, isOwned(it) ? '' : it.status].filter(Boolean).join(' \u00B7 ')) + '</small></div><span>\u203A</span></button>';
+      }).join('') + '</div>';
+    };
+    if (hits.length) {
+      var own = hits.filter(isOwned);
+      var title = own.length ? (S.kid ? '\u2705 We\u2019ve got this one!' : '\u2705 You\u2019ve got it!') : '\u2B50 Not owned yet - it\u2019s ' + (hits[0].status || 'listed');
+      sheet(title, '<p class="hint">Barcode ' + esc(digits) + '</p>' + listHtml(hits) + (own.length > 1 ? '<p class="hint">You\u2019ve got ' + own.length + ' with this barcode.</p>' : ''), [{ label: 'Done', value: true, cls: 'main' }, { label: '\uD83D\uDCF7 Scan another', value: 'again' }]).then(function (v) { if (v === 'again') openScanner({}); });
+      setTimeout(watchThumbs, 50);
+      return;
+    }
+    S.lastCode = digits;
+    if (S.kid) {
+      sheet('\uD83E\uDD37 Not in our collection yet', '<p>Barcode <b>' + esc(digits) + '</b> isn\u2019t saved on anything we\u2019ve got. If you think we have it, show ' + esc(PRIV) + '!</p>', [{ label: '\uD83D\uDCF7 Scan another', value: 'again', cls: 'main' }, { label: 'OK', value: false }]).then(function (v) { if (v === 'again') openScanner({}); });
+      return;
+    }
+    sheet('\uD83E\uDD37 No match for that barcode yet', '<p>Barcode <b>' + esc(digits) + '</b> isn\u2019t saved on any item yet. Most of the collection doesn\u2019t have barcodes saved, so <b>search by name</b> - if you\u2019ve got it, tap it to save the barcode and next time it\u2019ll match straight away.</p>' +
+      '<div class="search"><input id="bcName" type="search" placeholder="\uD83D\uDD0D What is it? e.g. Bartman 503" autocomplete="off" style="font-size:20px"></div><div id="bcNameOut"></div>' +
+      '<div class="stack" style="margin-top:10px"><a class="btn full" href="https://www.google.co.uk/search?q=' + encodeURIComponent(digits) + '" target="_blank" rel="noopener">\uD83D\uDD0E Look the barcode up on Google \u2197</a>' +
+      '<button class="btn yel full" data-act="bcAddNew">\u2795 It\u2019s new - add it with this barcode</button></div>',
+      [{ label: '\uD83D\uDCF7 Scan another', value: 'again' }, { label: 'Close', value: false, cls: 'main' }]).then(function (v) { if (v === 'again') openScanner({}); });
+    var inp = $('bcName'), t = null;
+    inp.addEventListener('input', function () {
+      clearTimeout(t); t = setTimeout(function () {
+        var res = fuzzyFind(inp.value, (S.items || []).filter(function (it) { return !neverShow(it.name); }), 6);
+        $('bcNameOut').innerHTML = !inp.value.trim() ? '' : (res.length ? '<p class="hint">Tap the one it is to save the barcode on it:</p><div class="list">' + res.map(function (x) {
+          return '<button class="li ownLi" data-act="bcAssign" data-key="' + esc(x.it.key) + '">' + thumbHtml(x.it) + '<div class="grow">' + esc(x.it.name) + '<small>' + esc([x.it.range, x.it.status].filter(Boolean).join(' \u00B7 ')) + '</small></div><span class="pill green">This one</span></button>';
+        }).join('') + '</div>' : '<div class="nudge">\u274C Nothing in the collection matches that name.</div>');
+        watchThumbs();
+      }, 150);
+    });
+  }
+
+  /* ================= v4: collection value on Home (private) ================= */
+  function monthKey(d) { d = d || new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2); }
+  function todayKey() { var d = new Date(); return monthKey(d) + '-' + ('0' + d.getDate()).slice(-2); }
+  function localValueSummary() {
+    var own = (S.items || []).filter(function (it) { return isOwned(it) && !it.pending; });
+    var total = 0, valued = 0, upd = null, m = monthKey();
+    own.forEach(function (it) { if (it.v != null) { total += +it.v; valued++; } if (it.vu !== undefined) { upd = upd || 0; if (String(it.vu).slice(0, 7) === m) upd++; } });
+    total = Math.round(total * 100) / 100;
+    var key = 'valsnap_' + m, snap = null;
+    try { snap = JSON.parse(LS.get(key) || 'null'); } catch (e) { snap = null; }
+    if (!snap) { snap = { total: total, date: todayKey() }; LS.set(key, JSON.stringify(snap)); }
+    return { total: total, valued: valued, items: own.length, notValued: own.length - valued, updatedThisMonth: upd, monthStart: snap, change: Math.round((total - snap.total) * 100) / 100, local: true };
+  }
+  function shortDate(iso) { var p = String(iso || '').split('-'); if (p.length < 3) return iso || ''; return (+p[2]) + ' ' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][(+p[1] || 1) - 1]; }
+  function valueCardHtml(vs) {
+    if (!vs) return '';
+    var h = '<div class="card yel valueCard"><div class="head">\uD83D\uDD12 Collection value</div><div class="big">' + gbp(vs.total) + '</div>' +
+      '<div class="hint"><b>' + vs.items + '</b> items owned \u00B7 ' + vs.valued + ' with a value' + (vs.notValued ? ' (' + vs.notValued + ' still to value)' : '') + '</div>';
+    var ms = vs.monthStart;
+    if (ms && ms.date && ms.date !== todayKey() && vs.change != null) {
+      h += '<div class="vchg ' + (vs.change >= 0 ? 'up' : 'down') + '">' + (vs.change >= 0 ? '\u25B2 +' : '\u25BC ') + gbp(Math.abs(vs.change)).replace(/^/, vs.change < 0 ? '-' : '') + ' this month <small>(since ' + esc(shortDate(ms.date)) + ')</small></div>';
+    } else {
+      h += '<div class="hint">\uD83D\uDCC8 This month: tracking from ' + esc(shortDate((ms && ms.date) || todayKey())) + ' (the sheet has no older totals)</div>';
+    }
+    if (vs.updatedThisMonth != null) h += '<div class="hint">' + vs.updatedThisMonth + ' value' + (vs.updatedThisMonth === 1 ? '' : 's') + ' updated this month</div>';
+    h += '<button class="btn small" data-act="go" data-to="value">See the value page</button></div>';
+    return h;
+  }
+
+  /* ================= v4: Wanted deal alerts ================= */
+  function dealCount() {
+    if (S.homeWanted) return S.homeWanted.filter(function (w) { return w.deal && !neverShow(w.name); }).length;
+    return (S.boot && S.boot.tiles && S.boot.tiles.wanted && S.boot.tiles.wanted.deals) || 0;
+  }
+  function refreshDealBadges() {
+    var n = dealCount();
+    var tb = document.querySelector('#tabbar [data-tab=wanted]');
+    if (tb) { var b = tb.querySelector('.tbBadge'); if (n && !b) { b = document.createElement('span'); b.className = 'tbBadge'; tb.appendChild(b); } if (b) { if (n) b.textContent = n; else b.remove(); } }
+    var hb = $('dealLine'); if (hb) hb.innerHTML = n ? '<span class="pill red">\uD83D\uDD25 ' + n + ' deal' + (n === 1 ? '' : 's') + ' under your max price</span>' : '';
+  }
+  function loadHomeWanted() {
+    return call('getWanted', S.kid ? (THEME.roles.filter(function (r) { return r !== PRIV; })[0] || 'Son') : S.role).then(function (list) {
+      S.homeWanted = (list || []).filter(function (w) { return !neverShow(w.name); }); refreshDealBadges(); return S.homeWanted;
+    }).catch(function () { return S.homeWanted || []; });
+  }
+
   function busy(text) { $('busyText').textContent = text || 'Just a sec\u2026'; $('busy').hidden = false; }
   function done() { $('busy').hidden = true; }
   var toastTimer = null;
@@ -96,6 +609,7 @@
 
   /* ---------------- navigation ---------------- */
   var TABS = function () {
+    if (S.kid) return [['kid', '\uD83C\uDFE0', 'Home'], ['kidStuff', '\uD83E\uDDF8', 'Our stuff'], ['kidHunt', '\u2B50', 'Hunt'], ['scan', '\uD83D\uDCF7', 'Scan']];
     return [['home', '\uD83C\uDFE0', 'Home'], ['collection', '\uD83D\uDDC2\uFE0F', 'Collection'], ['add', '\u2795', 'Add'], ['wanted', '\u2B50', 'Wanted'], ['more', '\u2630', 'More']];
   };
   function renderTabs() {
@@ -104,13 +618,15 @@
     nav.innerHTML = TABS().map(function (t) {
       var cur = S.screen === t[0] || (t[0] === 'collection' && (S.screen === 'item' || S.screen === 'edit')) ||
         (t[0] === 'more' && MORE_SCREENS.indexOf(S.screen) >= 0) || (t[0] === 'wanted' && (S.screen === 'checklists' || S.screen === 'checklist' || S.screen === 'missing'));
-      return '<button data-tab="' + t[0] + '"' + (cur ? ' aria-current="page"' : '') + '><span class="ic">' + t[1] + '</span>' + t[2] + '</button>';
+      var dn = t[0] === 'wanted' ? dealCount() : 0;
+      return '<button data-tab="' + t[0] + '"' + (cur ? ' aria-current="page"' : '') + '><span class="ic">' + t[1] + '</span>' + t[2] + (dn ? '<span class="tbBadge">' + dn + '</span>' : '') + '</button>';
     }).join('');
-    $('whoBadge').textContent = S.role ? 'Hi ' + S.role + ' \u00B7 tap to switch' : THEME.tagline;
+    $('whoBadge').textContent = S.kid ? KID_ROLE + '\u2019s mode' : (S.role ? 'Hi ' + S.role + ' \u00B7 tap to switch' : THEME.tagline);
   }
   var MORE_SCREENS = ['more', 'stats', 'posted', 'spares', 'export', 'help', 'settings', 'value', 'photos', 'novalue'];
   function go(screen, params, noHistory) {
     closeTour(); if ($('lightbox')) $('lightbox').hidden = true;
+    if (S.kid) { if (screen === 'item') screen = 'kidItem'; else if (KID_SCREENS.indexOf(screen) < 0) { screen = 'kid'; params = {}; } }
     if (!noHistory && S.screen && S.screen !== screen) S.history.push([S.screen, S.params]);
     if (S.history.length > 30) S.history.shift();
     S.screen = screen; S.params = params || {};
@@ -122,17 +638,19 @@
   }
   function back() {
     var prev = S.history.pop();
-    if (prev) go(prev[0], prev[1], true); else go('home', {}, true);
+    if (prev) go(prev[0], prev[1], true); else go(S.kid ? 'kid' : 'home', {}, true);
   }
-  function setMain(html) { $('main').innerHTML = html + '<p class="foot">' + esc(THEME.footer) + '</p>'; }
+  function setMain(html) { $('main').innerHTML = netBarHtml() + html + '<p class="foot">' + esc(THEME.footer) + '</p>'; }
   function backBtn() { return '<button class="btn small" data-act="back">\u2190 Back</button>'; }
 
   /* ---------------- data ---------------- */
   function loadBoot(force) {
     if (S.boot && !force) return Promise.resolve(S.boot);
     busy('Getting the collection\u2026');
-    return call('getBootstrap', S.role).then(function (b) {
-      done(); S.boot = b; S.items = b.items; return b;
+    return call('getBootstrap', S.kid ? KID_ROLE : S.role).then(function (b) {
+      b.items = (b.items || []).filter(function (it) { return !neverShow(it.name); });
+      S.boot = b; S.items = b.items;
+      return IDB.qAll().then(function (q) { NET.queueLen = q.length; q.forEach(applyQueued); }, noop).then(function () { done(); renderNetBar(); return b; });
     });
   }
   function itemByKey(key) { for (var i = 0; i < S.items.length; i++) if (S.items[i].key === key) return S.items[i]; return null; }
@@ -171,6 +689,7 @@
           el.innerHTML = res[fid] ? '<img alt="" src="' + res[fid] + '">' : '\uD83D\uDCF7';
         });
       });
+      saveThumbsSoon();
       if (thumbQueue.length) flushThumbs();
     }).catch(function () { batch.forEach(function (f) { S.thumbs[f] = null; }); });
   }
@@ -240,7 +759,7 @@
       toast(target.makeMain ? '\u2B50 New main photo saved. The old one is still in the folder.' : '\uD83C\uDF89 Saved ' + (n === 1 ? names[0] : n + ' files') + '. Nice one!', 'good');
       var it = itemByKey(target.key); if (it && it.folderId) delete S.thumbs[it.folderId];
       if (S.boot && S.boot.tiles.photos.next && S.boot.tiles.photos.next.key === target.key) S.boot = null;
-      if (S.screen === 'item') go('item', S.params, true);
+      if (S.screen === 'item' || S.screen === 'kidItem') go(S.screen, S.params, true);
       else if (S.screen === 'photos' || S.screen === 'home') { S.boot = null; go(S.screen, S.params, true); }
     }).catch(function (e) { oops(e); if (n) toast('Saved ' + n + ', but one didn\u2019t go. Try that one again from the item page.', 'oops'); });
   }
@@ -248,7 +767,7 @@
 
   /* ---------------- help text ---------------- */
   var HELP = {
-    home: ['This is your to-do board.', 'Each box has one button that sorts that job out. Start with whichever has the biggest number.', 'Use the search box to jump straight to anything.'],
+    home: ['This is your to-do board.', '\u201CDo I own it?\u201D at the top: type any name and it tells you straight away. Or tap \uD83D\uDCF7 Scan and point at a box\u2019s barcode.', 'Each box has one button that sorts that job out. Start with whichever has the biggest number.', 'No signal? The app shows the copy saved on the phone and syncs your changes later.'],
     collection: ['Everything you own, with the newest photo of each.', 'Type in the search box or use the three filters (range, status, condition).', 'Tap any picture to open it.'],
     item: ['This is one item.', 'Tap \u201CAdd photo / video\u201D to use the camera - it saves straight into the item\u2019s own Drive folder.', 'Tap a photo to see it big, or make it the main photo.', 'Tap \u201CEdit details\u201D to fix the name, category, condition and so on.', 'Tap a platform under \u201CPosted on\u201D once it\u2019s been posted.'],
     edit: ['Change anything, then tap Save.', 'Year is just the 4 numbers, like 1999. Anything else goes in Year note.', 'Nothing gets deleted from here - the worst that can happen is a typo you can fix.'],
@@ -290,6 +809,112 @@
 
   /* ---------------- screens ---------------- */
   var SCREENS = {};
+
+  /* ================= v4: Son's mode (big tiles, photos, no money, nothing Christmassy) ================= */
+  var KID_ROLE = THEME.roles.filter(function (r) { return r !== PRIV; })[0] || 'Son';
+  var KID_SCREENS = ['kid', 'kidStuff', 'kidItem', 'kidHunt', 'pin', 'add'];
+  function enterKid() {
+    LS.set('kidPrevRole', S.role || '');
+    clearDadToken();                    // money needs the PIN again after Son's mode
+    S.kid = true; LS.set('kidMode', '1');
+    S.role = KID_ROLE; LS.set('role', KID_ROLE);
+    S.boot = null; S.items = []; S.homeWanted = null; S.history = []; S.add = null;
+    go('kid', {}, true);
+  }
+  function exitKid() {
+    sheet('Back to the full app?', '<p>' + (THEME.needsPin ? 'Grown-ups only: it needs ' + esc(PRIV) + '\u2019s PIN.' : 'Switch back to the full view?') + '</p>',
+      [{ label: '\uD83D\uDD13 Yes, full app', value: true, cls: 'main' }, { label: 'Stay in ' + KID_ROLE + '\u2019s mode', value: false }]).then(function (ok) {
+      if (!ok) return;
+      if (THEME.needsPin) { S.kidExit = true; askDadPin(PRIV); }
+      else leaveKid(LS.get('kidPrevRole') || PRIV);
+    });
+  }
+  function leaveKid(role) {
+    S.kid = false; S.kidExit = false; LS.set('kidMode', ''); S.boot = null; S.homeWanted = null;
+    enterRole(role);
+  }
+  function kidItems() {
+    var idn = function (it) { var m = String(it.id || '').match(/(\d+)\s*$/); return m ? +m[1] : 0; };
+    return (S.items || []).filter(function (it) { return isOwned(it) && kidSafe(it); }).sort(function (a, b) { return idn(b) - idn(a); });   // newest finds first
+  }
+  function kidTile(it) {
+    return '<button class="ktile" data-act="kidItem" data-key="' + esc(it.key) + '">' + thumbHtml(it) + '<span class="kname">' + esc(it.name) + '</span></button>';
+  }
+  SCREENS.kid = function () {
+    loadBoot().then(function () {
+      var mine = kidItems();
+      var h = '<div class="kidHead"><div class="mascot small">' + THEME.mascotSvg.replace(/fsBite/g, 'fsBiteK') + '</div><h1>Hiya, ' + esc(KID_ROLE) + '! \uD83D\uDC4B</h1></div>' +
+        '<div class="ownCard card"><label class="ownLabel" for="kidSearch">\uD83D\uDD0D Have we got it?</label><input id="kidSearch" class="ownInput" type="search" placeholder="Type a name\u2026" autocomplete="off"><div id="kidOwnOut"></div></div>' +
+        '<div class="kgrid">' +
+        '<button class="kbig yel" data-act="go" data-to="kidStuff"><span>\uD83E\uDDF8</span><b>Our stuff</b><small>' + mine.length + ' things</small></button>' +
+        '<button class="kbig pink" data-act="go" data-to="kidHunt"><span>\u2B50</span><b>On the hunt</b><small id="kidHuntN">find these!</small></button>' +
+        '<button class="kbig skyL" data-act="scan"><span>\uD83D\uDCF7</span><b>Scan a box</b><small>have we got it?</small></button>' +
+        '<button class="kbig green" data-act="kidNew"><span>\u2795</span><b>New find!</b><small>snap it and save it</small></button>' +
+        '</div>' +
+        '<div class="center" style="margin-top:18px"><button class="btn small" data-act="kidExit">\uD83D\uDD13 Grown-ups: full app</button></div>';
+      setMain(h);
+      bindOwnSearch('kidSearch', 'kidOwnOut');
+      loadHomeWanted().then(function (w) { var n = w.filter(function (x) { return kidSafe(x); }).length; if ($('kidHuntN')) $('kidHuntN').textContent = n + ' to find!'; });
+    }).catch(oops);
+  };
+  SCREENS.kidStuff = function () {
+    loadBoot().then(function () {
+      var all = kidItems(), q = S.kidQ || '';
+      var h = '<h1>\uD83E\uDDF8 Our stuff</h1><div class="search"><input id="kidQ" type="search" class="ownInput" placeholder="\uD83D\uDD0D Find something\u2026" value="' + esc(q) + '" autocomplete="off"></div><div id="kidGrid"></div>';
+      setMain(h);
+      var draw = function () {
+        var list = q ? fuzzyFind(q, all, 60).map(function (x) { return x.it; }) : all.filter(function (it) { return it.folderId; }).concat(all.filter(function (it) { return !it.folderId; }));
+        var shown = list.slice(0, S.kidShown || 40);
+        $('kidGrid').innerHTML = '<p class="hint">' + list.length + ' thing' + (list.length === 1 ? '' : 's') + (q ? ' found' : ' - tap one to see it or add a photo') + '</p><div class="kstuff">' + shown.map(kidTile).join('') + '</div>' +
+          (list.length > shown.length ? '<p class="center"><button class="btn" data-act="kidMore">Show more</button></p>' : '');
+        watchThumbs();
+      };
+      var t = null;
+      $('kidQ').addEventListener('input', function (e) { clearTimeout(t); t = setTimeout(function () { q = S.kidQ = e.target.value; S.kidShown = 40; draw(); }, 150); });
+      S.redrawKid = draw; draw();
+    }).catch(oops);
+  };
+  SCREENS.kidItem = function (p) {
+    loadBoot().then(function () {
+      var it = itemByKey(p.key);
+      if (!it || !kidSafe(it)) { go('kidStuff', {}, true); return; }
+      S.current = it;
+      var t = it.folderId ? S.thumbs[it.folderId] : null;
+      var h = backBtn() + '<div class="card center kidItem"><div class="khero" id="kHero">' + (t ? '<img alt="" src="' + t + '">' : '<span>\uD83D\uDCF7</span>') + '</div>' +
+        '<h1>' + esc(it.name) + '</h1><div class="chips" style="justify-content:center">' + [it.range, it.character, it.year].filter(function (x) { return x && !/^unknown$/i.test(x); }).map(function (x) { return '<span class="chip on">' + esc(x) + '</span>'; }).join('') + '</div>' +
+        '<div class="stack" style="margin-top:14px"><button class="btn main full kbtn" data-act="kidSnap">\uD83D\uDCF7 Add a photo</button>' +
+        (it.status === 'Wanted' || it.status === 'On order' ? '<button class="btn green full kbtn" data-act="kidGotItem">\uD83C\uDF89 We got it!</button>' : '<div class="pill green" style="font-size:18px;padding:6px 14px">\u2705 We\u2019ve got this!</div>') +
+        '</div></div>';
+      setMain(h);
+      if (it.folderId && !t) call('getItemPhotos', it.folderId).then(function (ph) { var f = (ph || []).filter(function (x) { return x.thumb; })[0]; if (f && $('kHero')) $('kHero').innerHTML = '<img alt="" src="' + f.thumb + '">'; }).catch(noop);
+    }).catch(oops);
+  };
+  SCREENS.kidHunt = function () {
+    busy('Getting the hunt list\u2026');
+    loadHomeWanted().then(function (list) {
+      done();
+      var kl = list.filter(function (w) { return kidSafe(w); });
+      S.kidWanted = kl;
+      setMain('<h1>\u2B50 On the hunt</h1><p class="hint">Spotted one? Tap \u201CFound it!\u201D</p><div class="khunt">' + (kl.length ? kl.map(function (w, i) {
+        return '<div class="khuntCard"><b>' + esc(w.name) + '</b><small>' + esc(w.range || '') + '</small><button class="btn green kbtn" data-act="kidGot" data-i="' + i + '">\uD83C\uDF89 Found it!</button></div>';
+      }).join('') : '<div class="nudge">Nothing on the hunt list right now.</div>') + '</div>');
+    }).catch(oops);
+  };
+  function kidGot(i) {
+    var w = (S.kidWanted || [])[i]; if (!w) return;
+    confirmSheet('Found it? \uD83C\uDF89', 'Did we get <b>' + esc(w.name) + '</b>? It\u2019ll go into our collection.', 'Yes, we got it!', 'Not yet').then(function (ok) {
+      if (!ok) return;
+      busy('Adding it to our stuff\u2026');
+      return call('markGotIt', w.kind, w.ref, w.name, KID_ROLE).then(function (r) {
+        done(); S.boot = null; S.homeWanted = null;
+        toast(r.queued ? '\uD83C\uDF89 Got it! It\u2019ll save when there\u2019s signal.' : '\uD83C\uDF89 Brilliant! It\u2019s in our collection.', 'good');
+        return confirmSheet('Take a photo?', 'Snap <b>' + esc(r.name || w.name) + '</b> now? (No faces - hands are fine.)', '\uD83D\uDCF7 Take photo', 'Later').then(function (snap) {
+          if (snap && r.key) openCamera({ key: r.key, name: r.name || w.name }); else go('kidHunt', {}, true);
+        });
+      });
+    }).catch(oops);
+  }
+
 
   SCREENS.guide = function (p) {
     var cards = [
@@ -344,6 +969,7 @@
       S.pinDigits = '';
       if (r && r.ok && r.token) {
         storeDadToken(r.token, r.expires);
+        if (S.kidExit) { leaveKid(PRIV); return; }
         enterRole(S.pendingRole || PRIV);
       } else {
         S.pinError = 'That PIN didn\u2019t match \u2014 have another go.';
@@ -377,6 +1003,7 @@
 SCREENS.who = function () {
     setMain('<div class="card skyL center"><h1>Who\u2019s using it?</h1><p>Tap your name. You can switch any time from the top.</p><div class="stack">' +
       THEME.roles.map(function (r) { return '<button class="btn ' + (r === PRIV ? 'yel' : 'pink') + ' full" style="min-height:72px;font-size:22px" data-act="pickRole" data-role="' + esc(r) + '">' + esc(r) + '</button>'; }).join('') +
+      '<button class="btn full" data-act="kidEnter">\uD83E\uDDD2 ' + esc(KID_ROLE) + '\u2019s mode - big buttons, no prices</button>' +
       '</div></div>');
   };
 
@@ -384,7 +1011,13 @@ SCREENS.who = function () {
     loadBoot().then(function (b) {
       var t = b.tiles, h = '';
       h += '<h1>' + (S.role === PRIV ? 'Alright, ' : 'Hiya, ') + esc(S.role) + '! \uD83D\uDC4B</h1>';
-      h += '<div class="search"><input id="homeSearch" type="search" placeholder="\uD83D\uDD0D Search the collection\u2026" aria-label="Search the collection" enterkeyhint="search"></div>';
+      h += '<div class="card ownCard"><label class="ownLabel" for="homeSearch">\uD83E\uDD14 Do I own it?</label>' +
+        '<div class="ownRow"><input id="homeSearch" class="ownInput" type="search" placeholder="Type a name\u2026" aria-label="Do I own it? Type a name" enterkeyhint="search" autocomplete="off">' +
+        '<button class="btn main scanBtn" data-act="scan" aria-label="Scan a barcode">\uD83D\uDCF7<small>Scan</small></button></div>' +
+        '<div id="ownOut"></div></div>';
+      var ownedN = S.items.filter(function (it) { return isOwned(it) && !it.pending; }).length;
+      if (isPriv()) h += '<div id="valueBox">' + valueCardHtml(localValueSummary()) + '</div>';
+      else h += '<div class="card skyL valueCard"><div class="head">\uD83E\uDDF8 Our collection</div><div class="big">' + ownedN + '</div><div class="hint">items owned</div></div>';
       if (b.missing && (b.missing.tabs.length || b.missing.columns.length)) {
         h += '<div class="warn">\uD83D\uDEA7 The sheet is still being tidied up, so a few bits (like ' + esc(b.missing.columns.concat(b.missing.tabs).join(', ')) + ') will appear once that\u2019s finished. Everything else works.</div>';
       }
@@ -408,7 +1041,7 @@ SCREENS.who = function () {
       h += '<div class="card pinkL tile"><div class="head">\uD83D\uDCE5 Drop Zone</div><div class="big">' + (dz.count >= 0 ? dz.count : '?') + '</div><div class="hint">files waiting to be sorted into item folders</div>' +
         '<a class="btn main" href="' + esc(dz.url || b.folders.dropZone) + '" target="_blank" rel="noopener">Open Drop Zone \u2197</a></div>';
       // Wanted
-      h += '<div class="card tile"><div class="head">\u2B50 Wanted</div><div class="big">' + t.wanted.count + '</div><div class="hint">things on the hunt list</div><button class="btn main" data-act="go" data-to="wanted">See the wanted list</button></div>';
+      h += '<div class="card tile"><div class="head">\u2B50 Wanted</div><div class="big">' + t.wanted.count + '</div><div class="hint">things on the hunt list</div><div id="dealLine"></div><button class="btn main" data-act="go" data-to="wanted">See the wanted list</button></div>';
       // Checklist
       if (t.checklist) {
         var p = pct(t.checklist.owned, t.checklist.total);
@@ -419,11 +1052,18 @@ SCREENS.who = function () {
       // Add
       h += '<div class="card pink tile"><div class="head">\u2795 Got something new?</div><div class="hint">Snap it, name it, done. It goes straight into the sheet with its own folder.</div><button class="btn main" data-act="go" data-to="add">Add an item</button></div>';
       h += '</div>';
+      h += '<button class="btn pink full" style="margin-top:12px" data-act="kidEnter">\uD83E\uDDD2 ' + esc(KID_ROLE) + '\u2019s mode (big buttons, no prices)</button>';
       h += '<div class="row" style="margin-top:6px"><button class="btn small" data-act="refresh">\u21BB Refresh</button><button class="btn small" data-act="go" data-to="stats">\uD83D\uDCCA Stats</button><button class="btn small" data-act="go" data-to="checklists">\u2705 Checklists</button><button class="btn small" data-act="go" data-to="help">\u2753 Help</button></div>';
       setMain(h);
       if (LS.get('tourPending')) { LS.set('tourPending', ''); setTimeout(startTour, 350); }
       var hs = $('homeSearch');
-      hs.addEventListener('keydown', function (e) { if (e.key === 'Enter') { S.filters.q = hs.value; S.shown = 60; go('collection'); } });
+      hs.addEventListener('keydown', function (e) { if (e.key === 'Enter') { hs.blur(); } });
+      bindOwnSearch('homeSearch', 'ownOut');
+      refreshDealBadges();
+      loadHomeWanted();
+      if (isPriv()) call('getValueSummary', S.role).then(function (vs) {
+        if (vs && typeof vs.total === 'number' && $('valueBox') && S.screen === 'home') $('valueBox').innerHTML = valueCardHtml(vs);
+      }).catch(noop);
     }).catch(oops);
   };
 
@@ -517,7 +1157,7 @@ SCREENS.who = function () {
         ['Packaging', it.packaging || (it.packagingOld && it.packagingOld !== 'Unknown' ? 'was: ' + it.packagingOld : '')], ['Line / series', it.series], ['Character', it.character], ['Maker', it.maker],
         ['Year', (it.year || (it.yearOld && it.yearOld !== 'Unknown' ? it.yearOld : '')) + (it.yearNote ? ' (' + it.yearNote + ')' : '')],
         ['Size', it.size], ['Material', it.material], ['Accessories', it.accessories],
-        ['Quantity', it.quantity], ['Where it lives', it.location], ['Date got', it.dateGot]];
+        ['Quantity', it.quantity], ['Where it lives', it.location], ['Date got', it.dateGot], ['Barcode', it.barcode || itemBarcode(itemByKey(it.key))]];
       var money = function (v) { return /^\s*-?\d+(\.\d+)?\s*$/.test(String(v || '')) ? gbp(+v) : v; };
       if (isPriv()) facts.push(['Paid', money(it.paid)], ['Where from', it.whereBought], ['Value', money(it.value)], ['Value source', it.valueSource]);
       facts.push(['Description', it.description && it.description !== it.name ? it.description : ''], ['Notes', it.notes]);
@@ -530,7 +1170,8 @@ SCREENS.who = function () {
         '<div id="nudge"></div>' +
         '<div class="stack" style="margin:12px 0"><button class="btn main full" data-act="snapCurrent">\uD83D\uDCF7 Take photo</button>' +
         '<div class="row"><button class="btn" style="flex:1" data-act="pickCurrent">\uD83D\uDDBC\uFE0F From gallery</button><button class="btn" style="flex:1" data-act="videoCurrent">\uD83C\uDFA5 Record video</button></div>' +
-        '<div class="row"><button class="btn" style="flex:1" data-act="replaceMain">\uD83D\uDD04 New main photo</button></div>' +
+        '<div class="row"><button class="btn" style="flex:1" data-act="replaceMain">\uD83D\uDD04 New main photo</button><button class="btn" style="flex:1" data-act="scanAssign">\uD83C\uDFF7\uFE0F ' + ((it.barcode || itemBarcode(itemByKey(it.key))) ? 'Change barcode' : 'Save barcode') + '</button></div>' +
+        (it.offlineCopy ? '<div class="nudge">\uD83D\uDCF4 Offline copy - the full details and photos load when you\u2019re back online.</div>' : '') +
         '<div class="row"><button class="btn yel" style="flex:1" data-act="edit">\u270F\uFE0F Edit details</button>' +
         (it.folderId ? '<a class="btn" style="flex:1" href="https://drive.google.com/drive/folders/' + esc(it.folderId) + '" target="_blank" rel="noopener">\uD83D\uDCC1 Folder \u2197</a>' : '') + '</div>' +
         (it.status === 'Wanted' || it.status === 'On order' ? '<button class="btn green full" data-act="gotItem">\u2705 Got it!</button>' : '') + '</div>' +
@@ -540,6 +1181,7 @@ SCREENS.who = function () {
       setMain(h);
       if (!it.folderId) { $('nudge').innerHTML = '<div class="nudge">\uD83D\uDCF7 No photos yet - tap \u201CAdd photo / video\u201D and I\u2019ll make its folder too.</div>'; return; }
       call('getItemPhotos', it.folderId).then(function (ph) {
+        if (!$('hero') || !$('gallery')) return;   // moved on to another screen already
         S.gallery = ph;
         if (!ph.length) { $('hero').innerHTML = '<span style="font-size:44px">\uD83D\uDCF7</span>'; $('gallery').innerHTML = '<div class="hint">No photos yet.</div>'; $('nudge').innerHTML = '<div class="nudge">\uD83D\uDCF7 Missing photo! Snap the front first - no faces in shot.</div>'; return; }
         var first = ph[0];
@@ -548,7 +1190,7 @@ SCREENS.who = function () {
           return '<button class="gthumb' + (x.main ? ' main' : '') + '" data-act="openPhoto" data-i="' + i + '" aria-label="' + esc(x.name) + '">' + (x.thumb ? '<img alt="" src="' + x.thumb + '">' : '<span>' + (x.video ? '\uD83C\uDFAC' : '\uD83D\uDCF7') + '</span>') + (x.main ? '<b>Main</b>' : '') + (x.video ? '<i>\u25B6</i>' : '') + '</button>';
         }).join('') + '<p class="hint" style="grid-column:1/-1">' + ph.length + ' photo' + (ph.length === 1 ? '' : 's') + ' \u00B7 tap one to see it big or make it the main photo</p>';
         if (!ph.some(function (x) { return /- back\b/i.test(x.name); }) && !ph.some(function (x) { return x.video; })) $('nudge').innerHTML = '<div class="nudge">Tip: a photo of the back or box side helps with values later.</div>';
-      }).catch(function () { $('hero').innerHTML = '<span style="font-size:44px">\uD83D\uDCF7</span>'; $('gallery').innerHTML = '<div class="hint">Couldn\u2019t load the photos - tap Refresh in \u201CI\u2019m stuck\u201D.</div>'; });
+      }).catch(function () { if (!$('hero') || !$('gallery')) return; $('hero').innerHTML = '<span style="font-size:44px">\uD83D\uDCF7</span>'; $('gallery').innerHTML = '<div class="hint">Couldn\u2019t load the photos - tap Refresh in \u201CI\u2019m stuck\u201D.</div>'; });
     }).catch(oops);
   };
   function openPhoto(i) {
@@ -661,7 +1303,7 @@ SCREENS.who = function () {
           (isPriv() ? '<label class="field" for="a_paid">Price paid ' + (THEME.currency || '\u00A3') + ' (private)</label><input type="text" id="a_paid" inputmode="decimal" value="' + esc(A.more.paid || '') + '">' +
             '<label class="field" for="a_where">Where from</label><input type="text" id="a_where" value="' + esc(A.more.whereBought || '') + '">' : '') +
           '<label class="field" for="a_notes">Notes</label><textarea id="a_notes">' + esc(A.more.notes || '') + '</textarea></details>' +
-          '<div class="warn" style="margin-top:12px"><b>Check:</b> ' + esc(A.name) + ' \u00B7 ' + esc(A.range) + ' \u00B7 ' + (A.condition ? esc(A.condition) : '<i>pick a condition</i>') + ' \u00B7 ' + A.shots.length + ' photo' + (A.shots.length === 1 ? '' : 's') + '</div>' +
+          '<div class="warn" style="margin-top:12px"><b>Check:</b> ' + esc(A.name) + ' \u00B7 ' + esc(A.range) + ' \u00B7 ' + (A.condition ? esc(A.condition) : '<i>pick a condition</i>') + ' \u00B7 ' + A.shots.length + ' photo' + (A.shots.length === 1 ? '' : 's') + (A.barcode ? ' \u00B7 barcode ' + esc(A.barcode) : '') + '</div>' +
           '<div class="stack"><button class="btn main full" data-act="addSave"' + (A.condition ? '' : ' disabled') + '>\uD83D\uDCBE Save to the collection</button><button class="btn full" data-act="addBack">\u2190 Back</button></div></div>';
       }
       setMain(h);
@@ -700,14 +1342,17 @@ SCREENS.who = function () {
     busy('Adding it to the sheet\u2026');
     call('addItem', payload, S.role).then(function (r) {
       var n = 0, failed = 0;
-      return A.shots.reduce(function (p, s) {
+      if (A.barcode) { var bm = localBarcodes(); bm[r.key] = A.barcode; LS.set('barcodes', JSON.stringify(bm)); }
+      var bcStep = A.barcode ? call('saveBarcode', r.key, r.name, A.barcode, S.role).catch(function () { /* kept on the phone; can be saved again from the item */ }) : Promise.resolve();
+      return bcStep.then(function () { return A.shots.reduce(function (p, s) {
         return p.then(function () {
           busy('Saving photo ' + (n + failed + 1) + ' of ' + A.shots.length + '\u2026');
           return call('uploadMedia', r.key, r.name, s.mime, s.b64, s.label).then(function () { n++; }, function () { failed++; });
         });
-      }, Promise.resolve()).then(function () {
+      }, Promise.resolve()); }).then(function () {
         done(); S.add = null; S.boot = null;
-        var body = '<p><b>' + esc(r.name) + '</b> is in the collection' + (r.id ? ' as <b>' + esc(r.id) + '</b>' : '') + ', with its own folder and ' + n + ' photo' + (n === 1 ? '' : 's') + '.</p>' +
+        var body = (r.queued ? '<p>\uD83D\uDCF4 No signal, so <b>' + esc(r.name) + '</b> and ' + n + ' photo' + (n === 1 ? ' is' : 's are') + ' saved on the phone. They\u2019ll go into the sheet and Drive as soon as you\u2019re back online.</p>' :
+          '<p><b>' + esc(r.name) + '</b> is in the collection' + (r.id ? ' as <b>' + esc(r.id) + '</b>' : '') + ', with its own folder and ' + n + ' photo' + (n === 1 ? '' : 's') + '.</p>') +
           (failed ? '<div class="nudge">' + failed + ' photo' + (failed === 1 ? '' : 's') + ' didn\u2019t go through - open the item and tap \u201CAdd photo\u201D to try again.</div>' : '');
         return sheet('\uD83C\uDF89 Added!', body, [{ label: 'Open it', value: 'open', cls: 'main' }, { label: 'Add another', value: 'again' }, { label: 'Home', value: 'home' }]).then(function (x) {
           if (x === 'open') go('item', { key: r.key }); else if (x === 'again') go('add', {}, true); else go('home');
@@ -721,13 +1366,21 @@ SCREENS.who = function () {
     busy('Getting the wanted list\u2026');
     call('getWanted', S.role).then(function (list) {
       done();
+      list = (list || []).filter(function (w) { return !neverShow(w.name); });
+      S.homeWanted = list.slice();
+      list = list.filter(function (w) { return w.deal; }).concat(list.filter(function (w) { return !w.deal; }));
+      var deals = list.filter(function (w) { return w.deal; }).length;
+      refreshDealBadges();
       var h = '<h1>\u2B50 Wanted</h1>' +
+        (deals ? '<div class="card dealsCard"><b>\uD83D\uDD25 ' + deals + ' deal' + (deals === 1 ? '' : 's') + ' found under your max price</b><div class="hint">Shown first below. Check the condition and postage - nothing is ever bought or bid on from here.</div></div>' :
+          (isPriv() ? '<p class="hint">\uD83D\uDD14 Deal alerts: none right now. They light up when the Wanted sheet has a deal price at or under the max price.</p>' : '')) +
         '<div class="search"><input id="wantSearch" type="search" placeholder="\uD83D\uDD0D Search the wanted list" aria-label="Search wanted" autocomplete="off"></div>' +
         '<p class="hint" id="wantCount">' + list.length + ' on the hunt list. Got one? Tap \u201CGot it\u201D.</p>' +
         '<div class="row" style="margin-bottom:10px"><button class="btn small" data-act="go" data-to="missing">\uD83E\uDDE9 Missing from sets</button><button class="btn small" data-act="go" data-to="checklists">\u2705 Checklists</button></div>' +
         '<div class="list" id="wantList">' +
         (list.length ? list.map(function (w, i) {
-          return '<div class="li" data-wq="' + esc(norm(w.name + ' ' + w.range)) + '"><div class="grow">' + esc(w.name) + '<small>' + esc([w.range, w.conditionWanted, isPriv() && w.maxPrice ? 'max ' + w.maxPrice : ''].filter(Boolean).join(' \u00B7 ')) + '</small></div>' +
+          return '<div class="li' + (w.deal ? ' deal' : '') + '" data-wq="' + esc(norm(w.name + ' ' + w.range)) + '"><div class="grow">' + (w.deal ? '<span class="pill red">\uD83D\uDD25 Deal</span> ' : '') + esc(w.name) + '<small>' + esc([w.range, w.conditionWanted, isPriv() && w.maxPrice ? 'max ' + w.maxPrice : ''].filter(Boolean).join(' \u00B7 ')) + '</small>' +
+            (w.deal ? '<small>' + esc(['Found' + (w.dealFound ? ' ' + w.dealFound : ''), w.dealCondition ? 'condition: ' + w.dealCondition : '', isPriv() && w.dealPrice != null ? gbp(w.dealPrice) : ''].filter(Boolean).join(' \u00B7 ')) + '</small>' + (w.dealLink ? '<a class="btn small yel" style="margin-top:6px" href="' + esc(w.dealLink) + '" target="_blank" rel="noopener">Open the deal \u2197</a>' : '') : '') + '</div>' +
             '<div class="stack" style="gap:6px"><button class="btn small" data-act="findCheapest" data-i="' + i + '">\uD83D\uDCB7 Find cheapest</button><button class="btn green small" data-act="gotWanted" data-i="' + i + '">Got it</button></div></div>';
         }).join('') : '<div class="nudge">Nothing on the wanted list right now.</div>') + '</div>' +
         '<p><button class="btn full" data-act="go" data-to="checklists">\u2705 Full-set checklists</button></p>';
@@ -849,6 +1502,8 @@ SCREENS.who = function () {
     var f = S.boot ? S.boot.folders : null;
     setMain(backBtn() + '<h1>Settings</h1><div class="card stack">' +
       '<p>Using it as: <b>' + esc(S.role) + '</b></p><button class="btn full" data-act="go" data-to="who">Switch user</button>' +
+      '<button class="btn pink full" data-act="kidEnter">\uD83E\uDDD2 ' + esc(KID_ROLE) + '\u2019s mode</button>' +
+      '<p class="hint">\uD83D\uDCF4 Works offline: the last collection you opened is kept on this phone. Changes made with no signal sync automatically.' + (NET.queueLen ? ' <b>' + NET.queueLen + ' waiting.</b>' : '') + '</p>' +
       (THEME.needsPin && isPriv() ? '<button class="btn full" data-act="lockPriv">\uD83D\uDD12 Lock ' + esc(PRIV) + ' view</button>' : '') +
       (THEME.generic && isPriv() ? '<a class="btn yel full" href="?settings=1">\u2699\uFE0F Change name, colours, people</a>' : '') +
       (THEME.generic ? '<a class="btn full" href="?reset=1">\uD83D\uDD0C Connect a different collection</a>' : '') +
@@ -882,6 +1537,9 @@ SCREENS.who = function () {
   var FAQ = [
     ['\u2795 Adding something new', ['Tap <b>Add</b> at the bottom.', 'Take a photo (front first), type a name, pick the category, then the condition. That\u2019s it.', 'Everything else (year, maker, packaging, price) is optional under \u201CMore details\u201D.', 'If it looks like you already have it, I\u2019ll ask before adding a second one.']],
     ['\uD83D\uDCF8 Photos', ['Open any item and tap <b>Add photo / video</b>. It saves straight into that item\u2019s own Drive folder.', 'Tap <b>New main photo</b> to replace the picture that shows in the lists. The old one stays in the folder - nothing is deleted.', 'Tap any photo to see it big, then <b>Make main photo</b> to pick a different main one.', 'No faces in shot, please. Hands are fine.']],
+    ['\uD83E\uDD14 Do I own it? + barcode scan', ['Type any name in <b>Do I own it?</b> on Home - it tells you yes, maybe or no as you type, even with spelling mistakes.', 'Tap <b>\uD83D\uDCF7 Scan</b> and point the camera at a box\u2019s barcode. If the barcode is saved on an item it matches straight away.', 'First time for a barcode? Search the name and tap the item to save the barcode on it. Or open any item and tap <b>Save barcode</b>.']],
+    ['\uD83D\uDCF4 No signal', ['The last collection you opened is kept on the phone, with photos you\u2019ve already seen.', 'Adds, edits, ticks and photos made with no signal are kept on the phone and sync on their own when you\u2019re back online.']],
+    ['\uD83E\uDDD2 ' + KID_ROLE + '\u2019s mode', ['Big buttons and photos, no prices. Tick off finds on the hunt list and add photos.', 'Getting back to the full app needs ' + esc(THEME.privateRole) + '\u2019s PIN.']],
     ['\uD83D\uDD0D Finding things', ['Use the search box on Home or in Collection. It searches names, characters, lines and IDs.', 'Tap <b>Filters</b> to narrow down by category, line, condition, status, posted or photos.', 'Use the sort menu for newest first, A to Z or by year.']],
     ['\u2B50 Wanted and missing', ['<b>Wanted</b> is your hunt list. Tap <b>Got it</b> when one arrives and it moves into the collection.', '<b>Missing list</b> (under More) shows everything still needed from every full-set checklist in one place.', '<b>Checklists</b> shows how close each set is.']],
     ['\uD83D\uDCE3 Posted on socials', ['Each item page has the platforms as buttons. Tap one to tick it once it\u2019s posted.', 'Under More \u2192 <b>Posted on socials</b> you can see what hasn\u2019t been posted yet - handy for planning.']],
@@ -1123,7 +1781,7 @@ SCREENS.who = function () {
   /* ---------------- events ---------------- */
   document.addEventListener('click', function (e) {
     var tab = e.target.closest('[data-tab]');
-    if (tab) { S.history = []; go(tab.getAttribute('data-tab'), {}, true); return; }
+    if (tab) { if (tab.getAttribute('data-tab') === 'scan') { openScanner({}); return; } S.history = []; go(tab.getAttribute('data-tab'), {}, true); return; }
     var el = e.target.closest('[data-act]'); if (!el) return;
     var a = el.getAttribute('data-act'), key = el.getAttribute('data-key');
     switch (a) {
@@ -1150,9 +1808,9 @@ SCREENS.who = function () {
         S.pinDigits = (S.pinDigits || '').slice(0, -1);
         go('pin', {}, true);
         break;
-      case 'pinCancel': S.pendingRole = ''; S.pinDigits = ''; S.pinError = ''; go('who', {}, true); break;
+      case 'pinCancel': S.pendingRole = ''; S.pinDigits = ''; S.pinError = ''; if (S.kidExit) { S.kidExit = false; go('kid', {}, true); break; } go('who', {}, true); break;
       case 'lockPriv': lockDadView(); break;
-      case 'item': go('item', { key: key }); break;
+      case 'item': $('sheet').hidden = true; if (key && key.indexOf('pending:') === 0) { toast('That one is waiting to sync - it\u2019ll open once you\u2019re back online.'); break; } go('item', { key: key }); break;
       case 'more': S.shown += 60; if (S.redrawGrid) S.redrawGrid(); break;
       case 'clearFilters': S.filters = { q: '', range: '', series: '', status: '', cond: '', posted: '', photos: '', sort: 'newest' }; go('collection', {}, true); break;
       case 'snapFor': var it = itemByKey(key) || { key: key, name: '' }; openCamera({ key: key, name: it.name }); break;
@@ -1198,17 +1856,47 @@ SCREENS.who = function () {
       case 'startTour': LS.set('tourPending', '1'); go('home', {}, true); break;
       case 'tourNext': startTour(+el.getAttribute('data-i')); break;
       case 'tourSkip': closeTour(); toast('No problem - the tour is under More \u2192 Help.'); break;
+      case 'scan': openScanner({}); break;
+      case 'scanAssign': openScanner({ assign: { key: S.current.key, name: S.current.name } }); break;
+      case 'scanClose': stopScanner(); break;
+      case 'scanType': typeCode(); break;
+      case 'scanPhoto': $('scanInput').value = ''; $('scanInput').click(); break;
+      case 'bcAssign':
+        var bi = itemByKey(key); if (!bi) break; $('sheet').hidden = true;
+        saveBarcodeTo(bi.key, bi.name, S.lastCode); break;
+      case 'bcAddNew':
+        $('sheet').hidden = true; S.add = { step: 1, shots: [], name: '', range: '', condition: '', more: {}, barcode: S.lastCode }; go('add'); break;
+      case 'syncNow': syncQueue(); break;
+      case 'kidEnter': enterKid(); break;
+      case 'kidExit': exitKid(); break;
+      case 'kidItem': $('sheet').hidden = true; go('kidItem', { key: key }); break;
+      case 'kidMore': S.kidShown = (S.kidShown || 40) + 40; if (S.redrawKid) S.redrawKid(); break;
+      case 'kidSnap': if (S.current) openCamera({ key: S.current.key, name: S.current.name }); break;
+      case 'kidGot': kidGot(+el.getAttribute('data-i')); break;
+      case 'kidNew': S.add = null; go('add'); break;
+      case 'kidGotItem':
+        confirmSheet('We got it? \uD83C\uDF89', 'Mark <b>' + esc(S.current.name) + '</b> as ours?', 'Yes!', 'Not yet').then(function (ok) {
+          if (!ok) return; busy('Saving\u2026');
+          return call('markGotIt', 'item', S.current.key, S.current.name, KID_ROLE).then(function () { done(); S.current.status = 'Owned'; S.boot = null; toast('\uD83C\uDF89 It\u2019s ours!', 'good'); go('kidItem', S.params, true); });
+        }).catch(oops); break;
     }
   });
-  $('stuckBtn').addEventListener('click', showHelp);
-  $('homeBtn').addEventListener('click', function () { if (S.role) { S.history = []; go(S.screen === 'home' ? 'settings' : 'home', {}, true); } });
+  $('stuckBtn').addEventListener('click', function () {
+    if (!S.kid) return showHelp();
+    sheet('How it works', '<ul><li>\uD83E\uDDF8 <b>Our stuff</b>: tap anything to see it big or add a photo.</li><li>\u2B50 <b>Hunt</b>: things we\u2019re looking for. Found one? Tap \u201CFound it!\u201D</li><li>\uD83D\uDCF7 <b>Scan</b>: point at a box\u2019s barcode to see if we\u2019ve got it.</li><li>No faces in photos - hands are fine.</li></ul>',
+      [{ label: '\u21BB Refresh', value: 'refresh' }, { label: 'Got it!', value: 'ok', cls: 'main' }]).then(function (v) { if (v === 'refresh') { S.boot = null; S.thumbs = {}; loadSavedThumbs(); go(S.screen || 'kid', S.params, true); } });
+  });
+  $('homeBtn').addEventListener('click', function () { if (S.kid) { S.history = []; go('kid', {}, true); return; } if (S.role) { S.history = []; go(S.screen === 'home' ? 'settings' : 'home', {}, true); } });
   $('camInput').addEventListener('change', onFiles);
   $('pickInput').addEventListener('change', onFiles);
   if ($('vidInput')) $('vidInput').addEventListener('change', onFiles);
   $('sheet').addEventListener('click', function (e) { if (e.target === $('sheet')) { /* tap outside: ignore so nothing is chosen by accident */ } });
 
   /* ---------------- start ---------------- */
-  if (!LS.get('seenGuide')) go('guide', { i: 0 }, true);
+  loadSavedThumbs();
+  IDB.qAll().then(function (q) { NET.queueLen = q.length; renderNetBar(); if (q.length && navigator.onLine !== false) syncQueue(); }, noop);
+  if (S.kid) { S.role = KID_ROLE; go('kid', {}, true); }
+  else if (!LS.get('seenGuide')) go('guide', { i: 0 }, true);
   else if (!S.role) go('who', {}, true);
   else if (S.role === PRIV && THEME.needsPin && !dadUnlocked()) askDadPin(S.role);
   else go('home', {}, true);
