@@ -428,7 +428,7 @@
   }
   function openScanner(opts) {
     SCAN.opts = opts || {}; SCAN.last = ''; SCAN.hits = 0;
-    var box = scanBox(); box.hidden = false;
+    var box = scanBox(); var wasOpen = !box.hidden; box.hidden = false; layerOpen(wasOpen);
     $('scanTitle').textContent = SCAN.opts.assign ? 'Scan the barcode for ' + SCAN.opts.assign.name : (SCAN.opts.add ? 'Scan the barcode for this new item' : (S.kid ? 'Scan a box!' : 'Point at the barcode'));
     $('scanMsg').textContent = 'Hold the box steady, about a hand\u2019s width away.';
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { scanNoCamera(); return; }
@@ -464,7 +464,7 @@
   function gotCode(code) {
     if (!$('scanBox') || $('scanBox').hidden) return;
     try { if (navigator.vibrate) navigator.vibrate(80); } catch (e) { /* ignore */ }
-    stopScanner(); handleCode(code);
+    NAV.keep = true; stopScanner(); handleCode(code);
   }
   function scanFromFile(file) {
     $('scanMsg').textContent = 'Reading the photo\u2026';
@@ -481,6 +481,7 @@
   }
   function typeCode() {
     var opts = SCAN.opts || {};
+    NAV.keep = true;
     stopScanner();
     sheet('\u2328\uFE0F Type the barcode', '<p class="hint">The numbers under the stripes (usually 12 or 13 of them).</p><input type="text" id="bcTyped" inputmode="numeric" autocomplete="off" placeholder="e.g. 5012345678900" style="font-size:22px;letter-spacing:1px">',
       [{ label: 'Check it', value: 'go', cls: 'main' }, { label: 'Cancel', value: '' }]).then(function (v) {
@@ -493,14 +494,14 @@
   }
   function handleCode(code) {
     var opts = SCAN.opts || {}, digits = bcDigits(code);
-    if (!digits) { toast('That code isn\u2019t a product barcode (' + String(code).slice(0, 30) + ').', 'oops'); return; }
+    if (!digits) { layerDrop(); toast('That code isn\u2019t a product barcode (' + String(code).slice(0, 30) + ').', 'oops'); return; }
     if (opts.assign) {
       var a = opts.assign;
       return confirmSheet('Save this barcode?', 'Save <b>' + esc(digits) + '</b> onto <b>' + esc(a.name) + '</b>? Next time you scan this box it\u2019ll match straight away.', 'Yes, save it', 'Cancel').then(function (ok) {
         if (ok) saveBarcodeTo(a.key, a.name, digits).then(function () { if (S.screen === 'item') go('item', S.params, true); });
       });
     }
-    if (opts.add) { applyAddBarcode(digits); return; }
+    if (opts.add) { layerDrop(); applyAddBarcode(digits); return; }
     var hits = itemsByBarcode(digits);
     var listHtml = function (list) {
       return '<div class="list">' + list.map(function (it) {
@@ -599,23 +600,84 @@
   }
 
   /* bottom sheet (friendly confirm / warnings) */
+  var SHEET_OK = null;
+  function finishSheet(value) {
+    var sh = $('sheet'); if (sh) sh.hidden = true;
+    var fn = SHEET_OK; SHEET_OK = null;
+    if (fn) fn(value);
+  }
   function sheet(title, bodyHtml, buttons) {
     return new Promise(function (resolve) {
+      if (SHEET_OK) { var prev = SHEET_OK; SHEET_OK = null; prev(false); }
+      SHEET_OK = resolve;
+      var wasOpen = $('sheet') && !$('sheet').hidden;
       $('sheetTitle').textContent = title;
       $('sheetBody').innerHTML = bodyHtml || '';
       var bb = $('sheetButtons'); bb.innerHTML = '';
       (buttons || [{ label: 'OK', value: true, cls: 'main' }]).forEach(function (b) {
         var el = document.createElement('button');
         el.className = 'btn full ' + (b.cls || ''); el.textContent = b.label;
-        el.addEventListener('click', function () { $('sheet').hidden = true; resolve(b.value); });
+        el.addEventListener('click', function () {
+          NAV.sheetValue = b.value;
+          if (NAV.pushed > 0) layerBack(); else finishSheet(b.value);
+        });
         bb.appendChild(el);
       });
       $('sheet').hidden = false;
+      layerOpen(wasOpen);
     });
   }
   function confirmSheet(title, body, yes, no) {
     return sheet(title, '<p>' + body + '</p>', [{ label: yes || 'Yes', value: true, cls: 'main' }, { label: no || 'Not now', value: false }]);
   }
+
+  /* Phone Back (Android): close the top overlay or step; don't leave the app. */
+  var NAV = { pushed: 0, keep: false, skip: false, sheetValue: undefined, tourFinished: false };
+  function layerPush() {
+    try { history.pushState({ fs: 1, t: Date.now() }, ''); NAV.pushed++; } catch (e) { /* ignore */ }
+  }
+  function layerOpen(wasOpen) {
+    if (NAV.keep) { NAV.keep = false; return; }
+    if (!wasOpen) layerPush();
+  }
+  function layerBack() {
+    if (NAV.pushed > 0) { try { history.back(); } catch (e) { dismissTop(); } }
+    else dismissTop();
+  }
+  function layerDrop() {
+    if (NAV.keep) NAV.keep = false;
+    if (NAV.pushed <= 0) return;
+    NAV.skip = true; NAV.pushed--;
+    try { history.back(); } catch (e) { NAV.skip = false; }
+  }
+  function overlayOpen(id) { var el = $(id); return !!(el && !el.hidden); }
+  function dismissTop() {
+    var box = $('scanBox');
+    if (box && !box.hidden) { stopScanner(); return true; }
+    if (overlayOpen('sheet')) {
+      var v = NAV.sheetValue; NAV.sheetValue = undefined;
+      finishSheet(v !== undefined ? v : false);
+      return true;
+    }
+    if (overlayOpen('lightbox')) { $('lightbox').hidden = true; return true; }
+    if (overlayOpen('dadLetter')) { hideDadLetter(); return true; }
+    var tour = $('tour');
+    if (tour && !tour.hidden) { var done = !!NAV.tourFinished; NAV.tourFinished = false; closeTour(done); return true; }
+    if (S.screen === 'add' && S.add && S.add.step > 1) {
+      keepAddName();
+      S.add.step = Math.max(1, S.add.step - 1);
+      go('add', {}, true);
+      return true;
+    }
+    if (S.history && S.history.length) { back(); return true; }
+    if (S.screen === 'add') { go(S.kid ? 'kid' : 'home', {}, true); return true; }
+    return false;
+  }
+  window.addEventListener('popstate', function () {
+    if (NAV.skip) { NAV.skip = false; return; }
+    if (NAV.pushed > 0) NAV.pushed--;
+    dismissTop();
+  });
 
   /* ---------------- navigation ---------------- */
   var TABS = function () {
@@ -637,7 +699,7 @@
   function go(screen, params, noHistory) {
     closeTour(); if ($('lightbox')) $('lightbox').hidden = true;
     if (S.kid) { if (screen === 'item') screen = 'kidItem'; else if (KID_SCREENS.indexOf(screen) < 0) { screen = 'kid'; params = {}; } }
-    if (!noHistory && S.screen && S.screen !== screen) S.history.push([S.screen, S.params]);
+    if (!noHistory && S.screen && S.screen !== screen) { S.history.push([S.screen, S.params]); layerPush(); }
     if (S.history.length > 30) S.history.shift();
     S.screen = screen; S.params = params || {};
     renderTabs();
@@ -1170,7 +1232,9 @@
   function showDadLetter(force) {
     fillDadLetter();
     var el = $('dadLetter'); if (!el) return;
+    var wasOpen = !el.hidden;
     el.hidden = false;
+    layerOpen(wasOpen);
     try { var b = el.querySelector('.letterGo'); if (b) b.focus(); } catch (e) { /* ignore */ }
   }
   function hideDadLetter() {
@@ -1844,7 +1908,9 @@ SCREENS.who = function () {
       '<a class="btn small" href="' + esc(x.url) + '" target="_blank" rel="noopener">Open in Drive \u2197</a>' +
       (i < S.gallery.length - 1 ? '<button class="btn small" data-act="openPhoto" data-i="' + (i + 1) + '">\u2192</button>' : '') +
       '<button class="btn small main" data-act="closePhoto">Close</button></div></div>';
+    var wasOpen = !lb.hidden;
     lb.hidden = false;
+    layerOpen(wasOpen);
     if (!x.video) call('getPhotoLarge', S.current.key, x.id).then(function (r) {
       if (lb.hidden || !r || !r.src) return;
       var img = lb.querySelector('.lbImg img'); if (img) img.src = r.src; else lb.querySelector('.lbImg').innerHTML = '<img alt="" src="' + r.src + '">';
@@ -1967,14 +2033,14 @@ SCREENS.who = function () {
       busy('Checking you haven\u2019t already got it\u2026');
       call('checkDuplicate', A.name).then(function (hits) {
         done();
-        if (!hits.length) { A.step = 3; go('add', {}, true); return; }
+        if (!hits.length) { A.step = 3; layerPush(); go('add', {}, true); return; }
         var body = '<p>Looks like you might already have:</p><ul>' + hits.map(function (x) { return '<li><b>' + esc(x.name) + '</b> <span class="muted">(' + esc(x.range) + ')</span></li>'; }).join('') + '</ul><p>Is this a different one, or a second copy?</p>';
         sheet('Already got it?', body, [{ label: 'It\u2019s a different one - carry on', value: 'go', cls: 'main' }, { label: 'Open the one I\u2019ve got', value: 'open' }, { label: 'Change the name', value: 'stay' }])
-          .then(function (v) { if (v === 'go') { A.step = 3; go('add', {}, true); } else if (v === 'open') { go(S.kid ? 'kidItem' : 'item', { key: hits[0].key }); } });
+          .then(function (v) { if (v === 'go') { A.step = 3; layerPush(); go('add', {}, true); } else if (v === 'open') { go(S.kid ? 'kidItem' : 'item', { key: hits[0].key }); } });
       }).catch(function (e) { done(); A.step = 3; go('add', {}, true); });
       return;
     }
-    A.step = Math.min(4, A.step + 1); go('add', {}, true);
+    A.step = Math.min(4, A.step + 1); layerPush(); go('add', {}, true);
   }
   function addSave() {
     var A = addState();
@@ -2221,7 +2287,7 @@ SCREENS.who = function () {
   ];
   function startTour(i) {
     i = i || 0;
-    var step = TOUR[i]; if (!step) return closeTour(true);
+    var step = TOUR[i]; if (!step) { NAV.tourFinished = true; if (NAV.pushed > 0) layerBack(); else closeTour(true); return; }
     var ov = $('tour');
     if (!ov) { ov = document.createElement('div'); ov.id = 'tour'; ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-modal', 'true'); document.body.appendChild(ov); }
     var el = step.sel ? document.querySelector(step.sel) : null;
@@ -2238,7 +2304,9 @@ SCREENS.who = function () {
       '<div class="row"><button class="btn main" data-act="tourNext" data-i="' + (i + 1) + '">' + (i < TOUR.length - 1 ? 'Next \u2192' : 'Finish') + '</button>' +
       (i > 0 ? '<button class="btn small" data-act="tourNext" data-i="' + (i - 1) + '">\u2190 Back</button>' : '') +
       (i < TOUR.length - 1 ? '<button class="btn small" data-act="tourSkip">Skip tour</button>' : '') + '</div></div>';
+    var wasOpen = !ov.hidden;
     ov.hidden = false;
+    layerOpen(wasOpen);
   }
   function closeTour(finished) {
     var ov = $('tour'); if (!ov || ov.hidden) return;
@@ -2728,11 +2796,11 @@ SCREENS.who = function () {
   /* ---------------- events ---------------- */
   document.addEventListener('click', function (e) {
     var tab = e.target.closest('[data-tab]');
-    if (tab) { if (tab.getAttribute('data-tab') === 'scan') { openScanner({}); return; } S.history = []; go(tab.getAttribute('data-tab'), {}, true); return; }
+    if (tab) { if (tab.getAttribute('data-tab') === 'scan') { openScanner({}); return; } S.history = []; var to = tab.getAttribute('data-tab'); if (to === 'add') layerPush(); go(to, {}, true); return; }
     var el = e.target.closest('[data-act]'); if (!el) return;
     var a = el.getAttribute('data-act'), key = el.getAttribute('data-key');
     switch (a) {
-      case 'back': back(); break;
+      case 'back': layerBack(); break;
       case 'go': if (el.getAttribute('data-to') === 'guide') { go('guide', { i: 0 }); break; } go(el.getAttribute('data-to'), { tab: el.getAttribute('data-tab') }); break;
       case 'refresh': S.boot = null; thumbsRefresh(); go(S.screen, S.params, true); break;
       case 'thumbRetry': retryThumb(el.getAttribute('data-fid2')); break;
@@ -2782,8 +2850,8 @@ SCREENS.who = function () {
       case 'addPick': openCamera({ mode: 'add' }, true); break;
       case 'addClearShots': addState().shots = []; go('add', {}, true); break;
       case 'addNext': addNext(); break;
-      case 'addBack': var A = addState(); A.step = Math.max(1, A.step - 1); go('add', {}, true); break;
-      case 'addRange': addState().range = el.getAttribute('data-v'); addState().step = 4; go('add', {}, true); break;
+      case 'addBack': layerBack(); break;
+      case 'addRange': addState().range = el.getAttribute('data-v'); addState().step = 4; layerPush(); go('add', {}, true); break;
       case 'addCond': addState().condition = el.getAttribute('data-v'); document.querySelectorAll('[data-act=addCond]').forEach(function (b) { b.classList.toggle('sel', b === el); });
         var sv = document.querySelector('[data-act=addSave]'); if (sv) sv.disabled = false;
         var chk = document.querySelector('.warn i'); if (chk) chk.outerHTML = esc(addState().condition); break;
@@ -2793,11 +2861,11 @@ SCREENS.who = function () {
       case 'clMode': go('checklist', { tab: S.params.tab, all: el.getAttribute('data-all') }, true); break;
       case 'toggleFilters': S.filtersOpen = !($('filterBox') && !$('filterBox').hidden); go('collection', {}, true); break;
       case 'openPhoto': openPhoto(+el.getAttribute('data-i')); break;
-      case 'closePhoto': $('lightbox').hidden = true; break;
+      case 'closePhoto': layerBack(); break;
       case 'heroOpen': if (S.gallery && S.gallery.length) openPhoto(0); break;
       case 'makeMain':
         var ph = S.gallery[+el.getAttribute('data-i')]; busy('Making it the main photo\u2026');
-        call('setMainPhoto', S.current.key, S.current.name, ph.id).then(function () { done(); $('lightbox').hidden = true; if (S.current.folderId) forgetThumb(S.current.folderId); toast('\u2B50 That\u2019s the main photo now', 'good'); go('item', S.params, true); }).catch(oops); break;
+        call('setMainPhoto', S.current.key, S.current.name, ph.id).then(function () { done(); $('lightbox').hidden = true; layerDrop(); if (S.current.folderId) forgetThumb(S.current.folderId); toast('\u2B50 That\u2019s the main photo now', 'good'); go('item', S.params, true); }).catch(oops); break;
       case 'replaceMain': openCamera({ key: S.current.key, name: S.current.name, makeMain: true }); break;
       case 'togglePosted': togglePosted(el.getAttribute('data-p')); break;
       case 'postedMode': S.postedMode = el.getAttribute('data-v'); S.shownPosted = 60; go('posted', {}, true); break;
@@ -2807,10 +2875,10 @@ SCREENS.who = function () {
       case 'doExport': doExport(el.getAttribute('data-k')); break;
       case 'startTour': LS.set('tourPending', '1'); go('home', {}, true); break;
       case 'tourNext': startTour(+el.getAttribute('data-i')); break;
-      case 'tourSkip': closeTour(); toast('No problem - the tour is under More \u2192 Help.'); break;
+      case 'tourSkip': if (NAV.pushed > 0) layerBack(); else closeTour(); toast('No problem - the tour is under More \u2192 Help.'); break;
       case 'scan': openScanner({}); break;
       case 'scanAssign': openScanner({ assign: { key: S.current.key, name: S.current.name } }); break;
-      case 'scanClose': stopScanner(); break;
+      case 'scanClose': if (NAV.pushed > 0) layerBack(); else stopScanner(); break;
       case 'scanType': typeCode(); break;
       case 'scanPhoto': $('scanInput').value = ''; $('scanInput').click(); break;
       case 'bcAssign':
@@ -2820,7 +2888,7 @@ SCREENS.who = function () {
         $('sheet').hidden = true; S.add = { step: 1, shots: [], name: '', range: '', condition: '', more: {}, barcode: S.lastCode }; go('add'); break;
       case 'syncNow': syncQueue(); break;
       case 'letterOpen': showDadLetter(true); break;
-      case 'letterGo': hideDadLetter(); break;
+      case 'letterGo': if (NAV.pushed > 0) layerBack(); else hideDadLetter(); break;
       case 'rwAsk': askReward(el.getAttribute('data-id')); break;
       case 'rwYes': decideRewardUI(el.getAttribute('data-id'), true); break;
       case 'rwNo': decideRewardUI(el.getAttribute('data-id'), false); break;
