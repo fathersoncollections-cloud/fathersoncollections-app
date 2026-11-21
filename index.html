@@ -7,112 +7,325 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="FatherSon">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="description" content="Our collection, sorted.">
+  <meta name="referrer" content="no-referrer">
   <title>FatherSon Collections</title>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<style>
+  :root {
+    --sky: #9FD3E6; --skyL: #E6F4F8; --yel: #FFD36E; --pink: #F4A0B5; --pinkL: #FCE1E8;
+    --ink: #13294B; --green: #7BD389; --amber: #FFB347; --red: #E4572E; --white: #FFFFFF;
+    --r: 20px; --tap: 52px;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink); background: var(--sky); font-size: 17px; line-height: 1.4;
+    min-height: 100vh; padding-bottom: calc(84px + env(safe-area-inset-bottom));
+  }
+  #sky { position: fixed; inset: 0; z-index: -1; background: var(--sky); overflow: hidden; }
+  #sky svg { width: 100%; height: 100%; }
+  header#topbar {
+    position: sticky; top: 0; z-index: 20; display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; padding: calc(8px + env(safe-area-inset-top)) 12px 8px; background: var(--yel); border-bottom: 4px solid var(--ink);
+  }
+  .brand { display: flex; align-items: center; gap: 8px; background: none; border: 0; padding: 0; color: var(--ink); text-align: left; min-height: var(--tap); cursor: pointer; }
+  .logo { width: 46px; height: 46px; display: block; flex: 0 0 auto; }
+  .logo svg { width: 100%; height: 100%; }
+  .brandText { display: flex; flex-direction: column; font-weight: 900; font-size: 19px; line-height: 1.1; }
+  .brandText small { font-weight: 700; font-size: 13px; opacity: .8; }
+  .stuck { min-height: 44px; border-radius: 999px; border: 3px solid var(--ink); background: var(--white); color: var(--ink); font-weight: 800; font-size: 15px; padding: 6px 12px; }
+  main { max-width: 760px; margin: 0 auto; padding: 14px 12px 20px; outline: none; }
+  h1 { font-size: 26px; margin: 6px 0 12px; font-weight: 900; }
+  h2 { font-size: 21px; margin: 4px 0 10px; font-weight: 900; }
+  h3 { font-size: 18px; margin: 4px 0 6px; font-weight: 900; }
+  p { margin: 6px 0; }
+  .card { background: var(--white); border: 4px solid var(--ink); border-radius: var(--r); padding: 16px; margin: 0 0 14px; }
+  .card.yel { background: var(--yel); } .card.skyL { background: var(--skyL); } .card.pinkL { background: var(--pinkL); } .card.pink { background: var(--pink); }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 14px; }
+  .tile { display: flex; flex-direction: column; gap: 8px; margin: 0; }
+  .tile .head { font-size: 18px; font-weight: 900; }
+  .big { font-size: 40px; font-weight: 900; line-height: 1; }
+  .hint { font-size: 15px; opacity: .85; }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: var(--tap);
+    padding: 10px 18px; border-radius: 999px; border: 3px solid var(--ink); background: var(--white); color: var(--ink);
+    font-weight: 900; font-size: 17px; text-decoration: none; cursor: pointer; text-align: center;
+  }
+  .btn.main { background: var(--ink); color: var(--white); }
+  .btn.yel { background: var(--yel); } .btn.green { background: var(--green); } .btn.pink { background: var(--pink); }
+  .btn.full { width: 100%; }
+  .btn.small { min-height: 44px; font-size: 15px; padding: 6px 14px; }
+  .btn:disabled { opacity: .5; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .stack { display: flex; flex-direction: column; gap: 10px; }
+  input[type=text], input[type=search], input[type=number], input[type=password], select, textarea {
+    width: 100%; min-height: var(--tap); font-size: 17px; padding: 10px 14px; border: 3px solid var(--ink);
+    border-radius: 14px; background: var(--white); color: var(--ink); font-family: inherit;
+  }
+  textarea { min-height: 96px; }
+  label.field { display: block; font-weight: 800; margin: 10px 0 4px; }
+  .search { position: relative; margin: 0 0 14px; }
+  .filters { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; margin: 0 0 12px; background: var(--white); border: 3px solid var(--ink); border-radius: 16px; padding: 4px 12px 12px; }
+  .filters[hidden] { display: none; }
+  .filters label.field { margin: 8px 0 2px; font-size: 14px; }
+  .filters select { font-size: 15px; padding: 6px 8px; width: 100%; }
+  select.inline { width: auto; flex: 1 1 140px; min-height: 44px; font-size: 15px; padding: 6px 10px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(46%, 160px), 1fr)); gap: 10px; }
+  .gcard { background: var(--white); border: 3px solid var(--ink); border-radius: 16px; overflow: hidden; padding: 0; text-align: left; color: var(--ink); cursor: pointer; display: flex; flex-direction: column; font-family: inherit; }
+  .thumb { width: 100%; aspect-ratio: 1 / 1; background: var(--skyL); display: flex; align-items: center; justify-content: center; font-size: 30px; overflow: hidden; }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .gname { padding: 8px 10px 10px; font-weight: 800; font-size: 14px; line-height: 1.25; }
+  .gmeta { display: block; font-weight: 600; font-size: 12px; opacity: .75; margin-top: 2px; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; border: 2px solid var(--ink); background: var(--white); font-size: 13px; font-weight: 800; }
+  .pill.green { background: var(--green); } .pill.amber { background: var(--amber); } .pill.red { background: var(--red); color: var(--white); } .pill.yel { background: var(--yel); }
+  .bar { height: 20px; background: var(--white); border: 3px solid var(--ink); border-radius: 999px; overflow: hidden; }
+  .bar > div { height: 100%; background: var(--green); }
+  .facts { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 16px; }
+  .facts dt { font-weight: 800; } .facts dd { margin: 0; word-break: break-word; }
+  .hero { width: 100%; border-radius: 16px; border: 3px solid var(--ink); background: var(--skyL); aspect-ratio: 4 / 3; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .hero img { width: 100%; height: 100%; object-fit: contain; background: var(--white); }
+  .strip { display: flex; gap: 8px; overflow-x: auto; padding: 8px 0; }
+  .strip a { flex: 0 0 72px; height: 72px; border: 2px solid var(--ink); border-radius: 10px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: var(--skyL); text-decoration: none; }
+  .strip img { width: 100%; height: 100%; object-fit: cover; }
+  .nudge { background: var(--pinkL); border: 3px dashed var(--ink); border-radius: 16px; padding: 12px; margin: 10px 0; font-weight: 700; }
+  .warn { background: #FFF3C4; border: 3px solid var(--ink); border-radius: 16px; padding: 12px; margin: 10px 0; }
+  .list { display: flex; flex-direction: column; gap: 10px; }
+  .li { display: flex; align-items: center; gap: 10px; background: var(--white); border: 3px solid var(--ink); border-radius: 16px; padding: 10px 12px; }
+  .li .grow { flex: 1 1 auto; min-width: 0; font-weight: 800; }
+  .li .grow small { display: block; font-weight: 600; opacity: .75; }
+  .steps { display: flex; gap: 6px; margin: 0 0 12px; }
+  .steps span { flex: 1; height: 10px; border-radius: 999px; background: var(--white); border: 2px solid var(--ink); }
+  .steps span.on { background: var(--ink); }
+  .choice { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+  .choice .btn.sel { background: var(--yel); box-shadow: inset 0 0 0 3px var(--ink); }
+  .shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 8px; margin: 10px 0; }
+  .shot { position: relative; border: 3px solid var(--ink); border-radius: 12px; overflow: hidden; aspect-ratio: 1/1; background: var(--skyL); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; text-align: center; }
+  .shot img { width: 100%; height: 100%; object-fit: cover; }
+  .shot b { position: absolute; left: 0; right: 0; bottom: 0; background: rgba(255,255,255,.9); font-size: 12px; padding: 2px; }
+  .guide { text-align: center; }
+  .guide .mascot { width: 140px; margin: 0 auto 6px; }
+  .dots { display: flex; justify-content: center; gap: 8px; margin: 12px 0; }
+  .dots span { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--ink); background: var(--white); }
+  .dots span.on { background: var(--ink); }
+  table.tbl { width: 100%; border-collapse: collapse; font-size: 15px; }
+  table.tbl th, table.tbl td { text-align: left; padding: 8px 6px; border-bottom: 2px solid var(--skyL); vertical-align: top; }
+  table.tbl td.num, table.tbl th.num { text-align: right; white-space: nowrap; }
+  nav#tabbar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; display: flex; justify-content: space-around;
+    background: var(--white); border-top: 4px solid var(--ink); padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+  }
+  nav#tabbar button { flex: 1; min-height: 58px; background: none; border: 0; color: var(--ink); font-weight: 800; font-size: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 14px; font-family: inherit; }
+  nav#tabbar button .ic { font-size: 24px; line-height: 1; }
+  nav#tabbar button[aria-current=page] { background: var(--yel); }
+  .sheet { position: fixed; inset: 0; z-index: 50; background: rgba(19,41,75,.55); display: flex; align-items: flex-end; justify-content: center; }
+  .sheet[hidden] { display: none; }
+  .sheetCard { width: 100%; max-width: 620px; max-height: 88vh; overflow-y: auto; background: var(--white); border: 4px solid var(--ink); border-bottom: 0; border-radius: 24px 24px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom)); }
+  .toast { position: fixed; left: 12px; right: 12px; bottom: calc(92px + env(safe-area-inset-bottom)); z-index: 60; max-width: 620px; margin: 0 auto; background: var(--ink); color: var(--white); border-radius: 16px; padding: 14px 16px; font-weight: 700; text-align: center; }
+  .toast.good { background: #1E6B3A; } .toast.oops { background: #8A3A12; }
+  .busy { position: fixed; inset: 0; z-index: 70; background: rgba(255,255,255,.7); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; font-weight: 800; }
+  .busy[hidden], .toast[hidden] { display: none; }
+  .spinner { width: 54px; height: 54px; border: 7px solid var(--skyL); border-top-color: var(--ink); border-radius: 50%; animation: spin 0.9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .foot { text-align: center; font-size: 13px; opacity: .85; margin: 18px 0 0; }
+  .muted { opacity: .7; }
+  .center { text-align: center; }
+  @media (min-width: 700px) { .grid { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); } }
+  /* v2 */
+  .gcard { position: relative; }
+  .gcard .badge { position: absolute; top: 6px; right: 6px; background: var(--yel); border: 2px solid var(--ink); border-radius: 999px; font-size: 14px; padding: 1px 6px; }
+  .li .thumb { width: 56px; height: 56px; flex: 0 0 56px; border-radius: 10px; font-size: 20px; }
+  .linkish { background: none; border: 0; padding: 0; color: var(--ink); font: inherit; font-weight: 800; text-decoration: underline; cursor: pointer; }
+  .menu { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .mtile { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; background: var(--white); border: 4px solid var(--ink); border-radius: 20px; padding: 14px; color: var(--ink); font-family: inherit; cursor: pointer; min-height: 120px; }
+  .mtile:nth-child(4n+1) { background: var(--yel); } .mtile:nth-child(4n+2) { background: var(--skyL); } .mtile:nth-child(4n+3) { background: var(--pinkL); }
+  .mtile .mic { font-size: 30px; line-height: 1; } .mtile b { font-size: 17px; font-weight: 900; } .mtile small { font-size: 13px; opacity: .8; font-weight: 600; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { display: inline-flex; align-items: center; gap: 4px; min-height: 40px; padding: 4px 12px; border-radius: 999px; border: 3px solid var(--ink); background: var(--white); color: var(--ink); font-weight: 800; font-size: 14px; font-family: inherit; cursor: pointer; }
+  .chip.on { background: var(--green); }
+  span.chip { cursor: default; min-height: 32px; }
+  .hero { position: relative; cursor: zoom-in; }
+  .hero .zoom { position: absolute; bottom: 8px; right: 8px; background: rgba(255,255,255,.9); border: 2px solid var(--ink); border-radius: 999px; padding: 2px 10px; font-size: 13px; font-weight: 800; }
+  .gallery .hint { grid-column: 1 / -1; }
+  .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; margin-bottom: 14px; }
+  .gthumb { position: relative; aspect-ratio: 1 / 1; padding: 0; border: 3px solid var(--ink); border-radius: 12px; overflow: hidden; background: var(--skyL); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 26px; }
+  .gthumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .gthumb.main { border-color: var(--yel); box-shadow: 0 0 0 3px var(--ink); }
+  .gthumb b { position: absolute; left: 4px; bottom: 4px; background: var(--yel); border: 2px solid var(--ink); border-radius: 999px; font-size: 11px; padding: 0 6px; }
+  .gthumb i { position: absolute; right: 4px; top: 4px; font-style: normal; font-size: 14px; background: var(--white); border-radius: 999px; padding: 0 5px; }
+  .lightbox { position: fixed; inset: 0; z-index: 80; background: rgba(19,41,75,.92); display: flex; align-items: center; justify-content: center; padding: 12px; }
+  .lightbox[hidden] { display: none; }
+  .lbInner { width: 100%; max-width: 760px; display: flex; flex-direction: column; gap: 10px; }
+  .lbImg { background: var(--white); border-radius: 16px; overflow: hidden; display: flex; align-items: center; justify-content: center; max-height: 70vh; min-height: 200px; }
+  .lbImg img { max-width: 100%; max-height: 70vh; object-fit: contain; display: block; }
+  .lbName { color: var(--white); font-weight: 700; font-size: 14px; text-align: center; word-break: break-word; }
+  .lbBtns { justify-content: center; }
+  #tour { position: fixed; inset: 0; z-index: 90; }
+  #tour[hidden] { display: none; }
+  #tour.dim { background: rgba(19,41,75,.6); }
+  .tHole { position: fixed; border-radius: 16px; box-shadow: 0 0 0 9999px rgba(19,41,75,.6); border: 4px solid var(--yel); pointer-events: none; transition: all .25s; }
+  .tBubble { position: fixed; left: 12px; right: 12px; max-width: 520px; margin: 0 auto; background: var(--white); border: 4px solid var(--ink); border-radius: 20px; padding: 16px; box-shadow: 0 8px 0 var(--ink); }
+  .tBubble.center { top: 50%; transform: translateY(-50%); } .tBubble.top { top: calc(80px + env(safe-area-inset-top)); } .tBubble.bottom { bottom: calc(110px + env(safe-area-inset-bottom)); }
+  .tStep { font-size: 13px; font-weight: 800; opacity: .7; }
+  .hbars { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+  .hb { display: grid; grid-template-columns: minmax(90px, 38%) 1fr auto; gap: 8px; align-items: center; font-size: 14px; }
+  .hbL { font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hbT { height: 16px; background: var(--skyL); border: 2px solid var(--ink); border-radius: 999px; overflow: hidden; }
+  .hbF { display: block; height: 100%; background: var(--yel); }
+  .hbV { font-weight: 900; min-width: 2.5em; text-align: right; }
+  .vbars { display: flex; align-items: flex-end; gap: 6px; height: 180px; padding-top: 10px; overflow-x: auto; }
+  .vb { flex: 1 0 34px; display: flex; flex-direction: column; align-items: center; height: 100%; gap: 3px; font-size: 11px; font-weight: 800; }
+  .vbT { flex: 1; width: 70%; display: flex; align-items: flex-end; background: var(--skyL); border-radius: 8px 8px 0 0; }
+  .vbF { width: 100%; background: var(--pink); border: 2px solid var(--ink); border-radius: 8px 8px 0 0; display: block; }
+  .vbL { white-space: nowrap; }
+  .rings { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .ring { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 4px; }
+  .ring svg { width: 110px; height: 110px; background: var(--skyL); border-radius: 50%; }
+  .faq summary { font-weight: 900; font-size: 18px; cursor: pointer; list-style: none; }
+  .faq summary::-webkit-details-marker { display: none; }
+  .faq summary::after { content: ' \25BE'; }
+  .faq ul { margin: 8px 0 0; padding-left: 20px; } .faq li { margin: 4px 0; }
+  .mascot.small { width: 90px; margin: 0 auto; }
+
+  .pinCard { max-width: 360px; margin-left: auto; margin-right: auto; }
+  .pinDots { display: flex; justify-content: center; gap: 14px; margin: 16px 0 8px; }
+  .pinDot { width: 18px; height: 18px; border-radius: 50%; border: 3px solid var(--ink); background: transparent; display: inline-block; }
+  .pinDot.on { background: var(--ink); }
+  .pinDot.bad { border-color: var(--red); background: var(--red); }
+  .pinDot.bad.on { background: var(--red); }
+  .pinErr { color: var(--red); font-weight: 800; min-height: 1.4em; }
+  .pinPad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 12px 0 16px; }
+  .pinKey { min-height: 64px; border-radius: 18px; border: 3px solid var(--ink); background: var(--white); color: var(--ink);
+    font-weight: 900; font-size: 26px; cursor: pointer; }
+  .pinKey:disabled { opacity: .5; }
+  .pinKey.spacer { visibility: hidden; pointer-events: none; border: 0; background: none; }
+  .pinCard.bad .pinDots { animation: pinShake 0.35s ease-in-out; }
+  @keyframes pinShake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-8px); } 75% { transform: translateX(8px); } }
+  [hidden] { display: none !important; }
+</style>
+
   <style>
-    html, body {
-      margin: 0;
-      height: 100%;
-      background: #70CCF5;
-      color: #13294B;
-      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-    }
-    #appFrame {
-      position: fixed;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      border: 0;
-      background: #70CCF5;
-    }
-    #loading, #fallback {
-      position: fixed;
-      inset: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 14px;
-      padding: 24px;
-      text-align: center;
-      background: #70CCF5;
-      z-index: 2;
-    }
-    #fallback { display: none; }
-    #loading img, #fallback img { width: 120px; height: 120px; }
-    h1 { font-size: 22px; margin: 0; }
-    p { margin: 0; font-size: 16px; line-height: 1.4; max-width: 28em; }
-    a.btn {
-      display: inline-block;
-      margin-top: 8px;
-      background: #FED90F;
-      color: #13294B;
-      font-weight: 800;
-      text-decoration: none;
-      border: 3px solid #13294B;
-      border-radius: 14px;
-      padding: 12px 18px;
-    }
-    .spinner {
-      width: 28px; height: 28px;
-      border: 4px solid #13294B;
-      border-top-color: #FED90F;
-      border-radius: 50%;
-      animation: spin .8s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
+    #bootScreen{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center;background:#70CCF5;color:#13294B;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;z-index:50}
+    #bootScreen img{width:120px;height:120px}
+    #bootScreen .bootSpin{width:28px;height:28px;border:4px solid #13294B;border-top-color:#FED90F;border-radius:50%;animation:bootspin .8s linear infinite}
+    #bootScreen button{background:#FED90F;color:#13294B;font-weight:800;font-size:18px;border:3px solid #13294B;border-radius:14px;padding:12px 18px}
+    @keyframes bootspin{to{transform:rotate(360deg)}}
   </style>
 </head>
 <body>
-  <div id="loading">
-    <img src="icons/icon-192.png" alt="">
-    <h1>FatherSon Collections</h1>
-    <div class="spinner" aria-hidden="true"></div>
-    <p>Opening your collection…</p>
+  <div id="bootScreen"><img src="icons/icon-192.png" alt=""><div class="bootSpin"></div><p id="bootMsg">Loading your collection…</p></div>
+
+  <div id="sky" aria-hidden="true"></div>
+  <header id="topbar">
+    <button id="homeBtn" class="brand" aria-label="Go to Home">
+      <span id="logo" class="logo"></span>
+      <span class="brandText"><span id="appName"></span><small id="whoBadge"></small></span>
+    </button>
+    <button id="stuckBtn" class="stuck" aria-label="I'm stuck - show help">🙋 I'm stuck</button>
+  </header>
+
+  <main id="main" tabindex="-1" aria-live="polite"></main>
+
+  <nav id="tabbar" aria-label="Main sections"></nav>
+
+  <!-- One hidden camera input, reused by every "Take photo" button -->
+  <input id="camInput" type="file" accept="image/*,video/*" capture="environment" hidden>
+  <input id="pickInput" type="file" accept="image/*,video/*" multiple hidden>
+
+  <div id="sheet" class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" hidden>
+    <div class="sheetCard">
+      <h2 id="sheetTitle"></h2>
+      <div id="sheetBody"></div>
+      <div id="sheetButtons" class="row"></div>
+    </div>
   </div>
-  <div id="fallback">
-    <img src="icons/icon-192.png" alt="">
-    <h1>FatherSon Collections</h1>
-    <p>The collection couldn’t load inside this page yet. Open it directly, or try again after the latest app update is live.</p>
-    <a class="btn" id="openDirect" href="https://script.google.com/a/gmail.com/macros/s/AKfycbwSO6lF3RuWl0oihI0plwrpb2UKTVDG699nbfXpsiD9y-ZIlRxf44L4SZgw7whRzpeF/exec">Open the collection</a>
-  </div>
-  <iframe
-    id="appFrame"
-    title="FatherSon Collections"
-    src="https://script.google.com/a/gmail.com/macros/s/AKfycbwSO6lF3RuWl0oihI0plwrpb2UKTVDG699nbfXpsiD9y-ZIlRxf44L4SZgw7whRzpeF/exec"
-    allow="camera; microphone; clipboard-write; fullscreen; geolocation"
-    referrerpolicy="no-referrer-when-downgrade">
-  </iframe>
+
+  <div id="lightbox" class="lightbox" role="dialog" aria-modal="true" aria-label="Photo" hidden></div>
+  <div id="toast" class="toast" role="status" hidden></div>
+  <div id="busy" class="busy" hidden><div class="spinner"></div><div id="busyText">Just a sec…</div></div>
+
+  
   <script>
-    (function () {
-      var APP = 'https://script.google.com/a/gmail.com/macros/s/AKfycbwSO6lF3RuWl0oihI0plwrpb2UKTVDG699nbfXpsiD9y-ZIlRxf44L4SZgw7whRzpeF/exec';
-      if (location.search.indexOf('stub=1') !== -1) {
-        APP = './app-stub.html';
-        document.getElementById('appFrame').src = APP;
-        document.getElementById('openDirect').href = APP;
-      }
-      var loading = document.getElementById('loading');
-      var fallback = document.getElementById('fallback');
-      var frame = document.getElementById('appFrame');
-      var loaded = false;
-      frame.addEventListener('load', function () {
-        loaded = true;
-        loading.style.display = 'none';
+  (function () {
+    'use strict';
+    var API = "https://script.google.com/macros/s/AKfycbwSO6lF3RuWl0oihI0plwrpb2UKTVDG699nbfXpsiD9y-ZIlRxf44L4SZgw7whRzpeF/exec";
+    var VER = "v3-20261121b";
+    // Plain fetch with no cookies, so Google's multi-account sign-in never gets involved.
+    function post(fn, args) {
+      return fetch(API, {
+        method: 'POST', credentials: 'omit', redirect: 'follow', cache: 'no-store',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ fn: fn, args: args || [] })
+      }).then(function (r) {
+        if (!r.ok) throw new Error('Hmm, that didn\u2019t work. Check you\u2019ve got signal and try again - nothing\u2019s been lost.');
+        return r.json();
+      }).then(function (j) {
+        if (!j || !j.ok) throw new Error((j && j.error) || 'Hmm, that didn\u2019t work.');
+        return j.result;
       });
+    }
+    window.FS_API = post;
+    function getTheme() {
+      return fetch(API + '?api=1&fn=theme', { credentials: 'omit', redirect: 'follow', cache: 'no-store' })
+        .then(function (r) { return r.text(); })
+        .then(function (t) {
+          var j; try { j = JSON.parse(t); } catch (e) { var x = new Error('legacy'); x.legacy = true; throw x; }
+          if (!j || !j.ok) throw new Error('no theme'); return j.result;
+        });
+    }
+    var started = false;
+    function start(theme) {
+      if (started) return; started = true;
+      window.THEME = theme;
+      try { document.querySelector('meta[name=theme-color]').setAttribute('content', theme.colours.sky); } catch (e) {}
+      var s = document.createElement('script');
+      s.src = 'app.js?' + VER;
+      s.onload = function () { document.getElementById('bootScreen').style.display = 'none'; };
+      s.onerror = showError;
+      document.body.appendChild(s);
+    }
+    function showError() {
+      var m = document.getElementById('bootMsg');
+      document.querySelector('#bootScreen .bootSpin').style.display = 'none';
+      m.innerHTML = 'Couldn\u2019t reach the collection. Check you\u2019ve got signal, then try again.<br><br><button id="bootRetry">Try again</button>';
+      document.getElementById('bootRetry').onclick = function () { location.reload(); };
+    }
+    var cached = null;
+    try { cached = JSON.parse(localStorage.getItem('fs_theme') || 'null'); } catch (e) { cached = null; }
+    var fresh = getTheme().then(function (t) {
+      try { localStorage.setItem('fs_theme', JSON.stringify(t)); } catch (e) {}
+      return t;
+    });
+    if (cached && cached.colours) { start(cached); fresh.catch(function () {}); }
+    else fresh.then(start, function (e) {
+      // The old Apps Script version answers with a web page (no JSON, no CORS), so fetch fails.
+      // Retry once, then fall back to opening the old page so nothing is worse than before.
+      if (e && e.legacy) return legacy();
       setTimeout(function () {
-        if (!loaded) {
-          loading.style.display = 'none';
-          fallback.style.display = 'flex';
-        }
-      }, 20000);
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('./sw.js');
-      }
-    })();
+        getTheme().then(function (t) { try { localStorage.setItem('fs_theme', JSON.stringify(t)); } catch (x) {} start(t); },
+          function () { if (navigator.onLine === false) showError(); else legacy(); });
+      }, 1500);
+    });
+    // Until the Apps Script update is live, the API answers with the old page: fall back to opening it as before.
+    function legacy() {
+      var f = document.createElement('iframe');
+      f.src = API; f.title = 'FatherSon Collections';
+      f.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;border:0;background:#70CCF5;z-index:60';
+      f.setAttribute('allow', 'camera; microphone; clipboard-write; fullscreen');
+      document.body.appendChild(f);
+    }
+
+    if ('serviceWorker' in navigator) {
+      var had = !!navigator.serviceWorker.controller, reloaded = false;
+      navigator.serviceWorker.addEventListener('controllerchange', function () {
+        if (had && !reloaded) { reloaded = true; location.reload(); }
+      });
+      navigator.serviceWorker.register('./sw.js').then(function (reg) { try { reg.update(); } catch (e) {} });
+    }
+  })();
   </script>
 </body>
 </html>
