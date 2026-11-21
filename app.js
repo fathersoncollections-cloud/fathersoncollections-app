@@ -1127,6 +1127,7 @@
     loadBoot().then(function () {
       var mine = kidItems();
       var h = '<div class="kidHead"><div class="mascot small">' + THEME.mascotSvg.replace(/fsBite/g, 'fsBiteK') + '</div><h1>Hiya, ' + esc(KID_ROLE) + '! \uD83D\uDC4B</h1></div>' +
+        funWorthHtml() +
         '<div class="ownCard card"><label class="ownLabel" for="kidSearch">\uD83D\uDD0D Have we got it?</label><input id="kidSearch" class="ownInput" type="search" placeholder="Type a name\u2026" autocomplete="off"><div id="kidOwnOut"></div></div>' +
         '<div class="kgrid">' +
         '<button class="kbig yel" data-act="go" data-to="kidStuff"><span>\uD83E\uDDF8</span><b>Our stuff</b><small>' + mine.length + ' things</small></button>' +
@@ -1138,7 +1139,6 @@
         '<button class="kbig paper" data-act="letterOpen"><span>\u2709\uFE0F</span><b>Letter from Dad</b><small>How it all started</small></button>' +
         '<button class="kbig paper" data-act="notesOpen"><span>\uD83D\uDCDD</span><b>Notes from Dad</b><small>little messages</small></button>' +
         '</div>' +
-        funWorthHtml() +
         '<div class="center" style="margin-top:18px"><button class="btn small" data-act="kidExit">\uD83D\uDD13 Grown-ups: full app</button></div>';
       setMain(h);
       bindOwnSearch('kidSearch', 'kidOwnOut');
