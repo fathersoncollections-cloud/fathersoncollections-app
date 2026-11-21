@@ -986,7 +986,7 @@
     collection: ['Everything you own, with the newest photo of each.', 'Type in the search box or use the three filters (range, status, condition).', 'Tap any picture to open it.'],
     item: ['This is one item.', 'Tap \u201CAdd photo / video\u201D to use the camera - it saves straight into the item\u2019s own Drive folder.', 'Tap a photo to see it big, or make it the main photo.', 'Tap \u201CEdit details\u201D to fix the name, category, condition and so on.', 'Tap a platform under \u201CPosted on\u201D once it\u2019s been posted.'],
     edit: ['Change anything, then tap Save.', 'Year is just the 4 numbers, like 1999. Anything else goes in Year note.', 'Nothing gets deleted from here - the worst that can happen is a typo you can fix.'],
-    add: ['Four quick steps: photo, name, range, condition.', 'On the name step you can scan or type the barcode so it\u2019s saved with the new item.', 'Everything else is optional - you can add it later.', 'If it looks like you already have it, I\u2019ll ask before adding a second one.'],
+    add: ['Four quick steps: photo, name, range, condition.', 'On the name step you can scan or type the barcode so it\u2019s saved with the new item.', 'If we find a match we\u2019ll fill the name, maker and range for you to check. A catalogue picture is a reference only — it is never saved as our photo.', 'Everything else is optional - you can add it later.', 'If it looks like you already have it, I\u2019ll ask before adding a second one.'],
     wanted: ['Things you\u2019re hunting for.', 'Got one? Tap \u201CGot it\u201D and it moves into the collection (I\u2019ll check first).'],
     checklists: ['How close you are to each full set.', 'Tap a set to see what\u2019s missing.'],
     checklist: ['Green = got it. The rest are still missing.', 'Tap \u201CGot it\u201D to tick one off - I\u2019ll check first.'],
@@ -1356,14 +1356,189 @@
   function addBarcodeBox(A) {
     if (A.barcode) {
       return '<div class="addBc" id="addBcBox"><div><b>\uD83C\uDFF7\uFE0F Barcode</b><div class="addBcCode">' + esc(A.barcode) + '</div></div>' +
+        addLookHtml(A) +
         '<div class="row"><button class="btn small" data-act="addScan">Scan again</button><button class="btn small" data-act="addTypeBc">Type it</button><button class="btn small" data-act="addClearBc">Clear</button></div></div>';
     }
     return '<div class="row wrap" style="margin-top:12px"><button class="btn" data-act="addScan">\uD83D\uDCF7 Scan barcode</button><button class="btn" data-act="addTypeBc">\u2328\uFE0F Type it</button></div>';
   }
+
+  /* v7b: look up a scanned/typed barcode in a free product database. Never blocks Add.
+     UPCitemdb is tried first but its trial API only allows CORS from upcitemdb.com, so in the
+     app it usually falls through to Open Products Facts, then Open Food Facts (both allow *).
+     Results are cached on the phone. Prices are stripped and never shown. A stock image, if any,
+     is a reference only and is never saved as the item photo. */
+  var BC_LOOK_MS = 5000;
+  function bcVariants(digits) {
+    var d = String(digits || '').replace(/\D/g, ''), out = [], seen = {};
+    [d, d.replace(/^0+/, '') || d, ('0000000000000' + d).slice(-13), ('000000000000' + d).slice(-12)].forEach(function (x) {
+      if (x && x.length >= 8 && !seen[x]) { seen[x] = 1; out.push(x); }
+    });
+    return out;
+  }
+  function bcLookGet(code) {
+    try {
+      var m = JSON.parse(LS.get('bcLookups') || '{}') || {}, h = m[code];
+      if (h && (Date.now() - (h.at || 0) < 30 * 864e5)) return h.r;
+    } catch (e) { /* ignore */ }
+    return undefined;
+  }
+  function bcLookSet(code, r) {
+    try {
+      var m = JSON.parse(LS.get('bcLookups') || '{}') || {};
+      m[code] = { at: Date.now(), r: r || null };
+      var keys = Object.keys(m);
+      if (keys.length > 80) {
+        keys.sort(function (a, b) { return (m[a].at || 0) - (m[b].at || 0); })
+          .slice(0, keys.length - 80).forEach(function (k) { delete m[k]; });
+      }
+      LS.set('bcLookups', JSON.stringify(m));
+    } catch (e) { /* ignore */ }
+  }
+  function guessRange(name, brand, cats) {
+    var lists = (S.boot && S.boot.lists && S.boot.lists.range) || [];
+    var blob = [name, brand, cats].join(' ');
+    var hints = [
+      [/funko|pop vinyl|pop!\s*animation/i, 'Funko'],
+      [/lego/i, 'Lego'],
+      [/world of springfield|\bwos\b|playmates/i, 'World of Springfield'],
+      [/super\s*7|ultimates/i, 'Super 7'],
+      [/jakks/i, 'Jakks Pacific']
+    ];
+    var i, j, want;
+    for (i = 0; i < hints.length; i++) if (hints[i][0].test(blob)) {
+      want = hints[i][1].toLowerCase();
+      for (j = 0; j < lists.length; j++) if (lists[j].toLowerCase() === want || lists[j].toLowerCase().indexOf(want) === 0) return lists[j];
+      return hints[i][1];
+    }
+    var b = String(brand || '').split(',')[0].trim().toLowerCase();
+    if (b) for (j = 0; j < lists.length; j++) if (lists[j].toLowerCase() === b) return lists[j];
+    return '';
+  }
+  function guessBrand(name, brand) {
+    var b = String(brand || '').split(',')[0].replace(/\s+/g, ' ').trim();
+    if (b) return b.slice(0, 60);
+    if (/funko/i.test(name || '')) return 'Funko';
+    if (/\blego\b/i.test(name || '')) return 'LEGO';
+    return '';
+  }
+  function cleanLook(o) {
+    if (!o || !o.name) return null;
+    var name = String(o.name).replace(/\s+/g, ' ').trim().slice(0, 120);
+    if (!name) return null;
+    var image = String(o.image || '');
+    if (!/^https:\/\//i.test(image)) image = '';
+    return { name: name, brand: guessBrand(name, o.brand), range: o.range || guessRange(name, o.brand, o.cats), image: image, source: o.source || '' };
+  }
+  function fromUpcItem(j) {
+    var it = j && j.items && j.items[0];
+    if (!it) return null;
+    return cleanLook({ name: it.title, brand: it.brand, cats: it.category, image: (it.images && it.images[0]) || '', source: 'upcitemdb' });
+  }
+  function fromFacts(j, source) {
+    if (!j || j.status !== 1 || !j.product) return null;
+    var p = j.product;
+    return cleanLook({ name: p.product_name || p.product_name_en || '', brand: p.brands, cats: p.categories, image: p.image_front_small_url || p.image_front_url || p.image_url || '', source: source });
+  }
+  function fetchJson(url, ms) {
+    var ac = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    var t = setTimeout(function () { if (ac) ac.abort(); }, ms || BC_LOOK_MS);
+    return fetch(url, { method: 'GET', credentials: 'omit', cache: 'no-store', signal: ac && ac.signal, headers: { 'Accept': 'application/json' } })
+      .then(function (r) { clearTimeout(t); if (!r.ok) throw new Error('bad'); return r.json(); }, function (e) { clearTimeout(t); throw e; });
+  }
+  function firstLook(promises) {
+    return new Promise(function (resolve) {
+      var left = promises.length, done = false;
+      if (!left) { resolve(null); return; }
+      promises.forEach(function (p) {
+        Promise.resolve(p).then(function (r) {
+          if (done) return;
+          if (r) { done = true; resolve(r); return; }
+          if (--left <= 0) resolve(null);
+        }, function () { if (!done && --left <= 0) resolve(null); });
+      });
+    });
+  }
+  function lookupOne(code) {
+    var fields = 'product_name,product_name_en,brands,categories,image_front_small_url,image_front_url,image_url,code';
+    var upc = fetchJson('https://api.upcitemdb.com/prod/trial/lookup?upc=' + encodeURIComponent(code), 2500).then(fromUpcItem, function () { return null; });
+    var opf = fetchJson('https://world.openproductsfacts.org/api/v2/product/' + encodeURIComponent(code) + '.json?fields=' + fields, BC_LOOK_MS).then(function (j) { return fromFacts(j, 'openproductsfacts'); }, function () { return null; });
+    var off = fetchJson('https://world.openfoodfacts.org/api/v2/product/' + encodeURIComponent(code) + '.json?fields=' + fields, BC_LOOK_MS).then(function (j) { return fromFacts(j, 'openfoodfacts'); }, function () { return null; });
+    return firstLook([upc, opf, off]);
+  }
+  function lookupBarcode(digits) {
+    var vars = bcVariants(digits), i, hit;
+    for (i = 0; i < vars.length; i++) {
+      hit = bcLookGet(vars[i]);
+      if (hit !== undefined) return Promise.resolve(hit);
+    }
+    var start = Date.now();
+    var tryVar = function (n) {
+      if (n >= vars.length) return Promise.resolve(null);
+      if (Date.now() - start > BC_LOOK_MS) return Promise.resolve(null);
+      return lookupOne(vars[n]).then(function (r) {
+        if (r) { vars.forEach(function (c) { bcLookSet(c, r); }); bcLookSet(digits, r); return r; }
+        return tryVar(n + 1);
+      }, function () { return tryVar(n + 1); });
+    };
+    return new Promise(function (resolve) {
+      var t = setTimeout(function () { resolve(null); }, BC_LOOK_MS);
+      tryVar(0).then(function (r) { clearTimeout(t); resolve(r || null); }, function () { clearTimeout(t); resolve(null); });
+    });
+  }
+  function startBarcodeLookup(digits) {
+    var A = addState();
+    A.bcLook = 'wait';
+    A.bcRef = '';
+    lookupBarcode(digits).then(function (r) { applyLookupToAdd(digits, r || null); }, function () { applyLookupToAdd(digits, null); });
+  }
+  function applyLookupToAdd(digits, r) {
+    var A = addState();
+    if (String(A.barcode || '') !== String(digits || '')) return;
+    A.bcLook = r || null;
+    A.bcRef = (r && r.image) || '';
+    if (r) {
+      if (!A.name) A.name = r.name;
+      A.more = A.more || {};
+      if (!A.more.maker && r.brand) A.more.maker = r.brand;
+      if (!A.range && r.range) A.range = r.range;
+    }
+    if (S.screen !== 'add') return;
+    var nameEl = $('addName');
+    if (nameEl && r && !String(nameEl.value || '').trim() && A.name) nameEl.value = A.name;
+    var makerEl = $('a_maker');
+    if (makerEl && r && r.brand && !String(makerEl.value || '').trim()) makerEl.value = r.brand;
+    if (A.step === 3 && r && r.range) {
+      document.querySelectorAll('#rangeChoices [data-act=addRange]').forEach(function (bt) {
+        bt.classList.toggle('sel', bt.getAttribute('data-v') === A.range);
+      });
+    }
+    paintAddLookup(A);
+  }
+  function addLookHtml(A) {
+    if (!A.barcode) return '';
+    if (A.bcLook === 'wait') return '<p class="hint" id="addBcLook">Looking it up\u2026</p>';
+    if (A.bcLook && A.bcLook.name) {
+      return '<div id="addBcLook" class="addBcFound"><p><b>Found: ' + esc(A.bcLook.name) + '</b> (check it)</p>' +
+        (A.bcRef ? '<img class="addBcRef" alt="Reference only, not saved as our photo" src="' + esc(A.bcRef) + '" onerror="this.remove()"><p class="hint">Reference only \u2014 this is not saved as our photo. Take your own so it can earn points.</p>' : '') +
+        '</div>';
+    }
+    if (A.bcLook === null) return '<p class="hint" id="addBcLook">Not found, type it in</p>';
+    return '<p class="hint" id="addBcLook"></p>';
+  }
+  function paintAddLookup(A) {
+    A = A || addState();
+    var box = $('addBcLook'), html = addLookHtml(A), wrap;
+    if (box) {
+      wrap = document.createElement('div'); wrap.innerHTML = html;
+      box.replaceWith(wrap.firstChild || wrap);
+    }
+  }
+
   function applyAddBarcode(digits) {
     var A = addState(), hits = itemsByBarcode(digits).filter(function (it) { return isOwned(it) && !neverShow(it.name) && (!S.kid || kidSafe(it)); });
     A.barcode = digits;
-    if (!hits.length) { toast('Barcode saved on this new item.', 'good'); go('add', {}, true); return; }
+    startBarcodeLookup(digits);
+    if (!hits.length) { go('add', {}, true); return; }
     var list = '<div class="list">' + hits.map(function (it) {
       return '<button class="li ownLi" data-act="' + (S.kid ? 'kidItem' : 'item') + '" data-key="' + esc(it.key) + '">' + thumbHtml(it) + '<div class="grow">' + esc(it.name) + '<small>' + esc(it.range || '') + '</small></div><span>\u203A</span></button>';
     }).join('') + '</div>';
@@ -2654,7 +2829,7 @@ SCREENS.who = function () {
       case 'rwSave': saveRewardsUI(); break;
       case 'addScan': keepAddName(); openScanner({ add: true }); break;
       case 'addTypeBc': keepAddName(); SCAN.opts = { add: true }; typeCode(); break;
-      case 'addClearBc': addState().barcode = ''; go('add', {}, true); break;
+      case 'addClearBc': var A0 = addState(); A0.barcode = ''; A0.bcLook = undefined; A0.bcRef = ''; go('add', {}, true); break;
       case 'kidEnter': enterKid(); break;
       case 'kidExit': exitKid(); break;
       case 'kidItem': $('sheet').hidden = true; go('kidItem', { key: key }); break;
