@@ -372,13 +372,33 @@
   .noteLi p { font-family: Georgia, "Iowan Old Style", Palatino, serif; font-size: 18px; line-height: 1.45; margin: 0 0 6px; }
   .noteLi .noteLiSign { text-align: right; font-weight: 700; font-size: 18px; margin: 8px 0 0; }
   .funWorth {
-    display: block; width: 100%; margin: 14px 0 0; padding: 16px 16px 14px;
+    display: block; width: 100%; margin: 14px 0 0; padding: 16px 12px 14px;
     background: #FBF6E8; color: #13294B; border: 4px solid #13294B; border-radius: 24px;
-    box-shadow: 0 6px 0 #13294B; font-family: inherit; cursor: pointer; text-align: center;
+    box-shadow: 0 6px 0 #13294B; font-family: inherit; text-align: center;
+    user-select: none; -webkit-user-select: none; cursor: grab; touch-action: pan-y;
+    overflow: hidden;
   }
+  .funWorth:active { cursor: grabbing; }
   .funWorth .funLabel { font-weight: 900; font-size: 15px; margin: 0 0 8px; letter-spacing: .02em; }
+  .funViewport { position: relative; overflow: hidden; min-height: 120px; }
+  .funSlide { width: 100%; box-sizing: border-box; transition: transform 280ms ease; }
+  .funSlide.funFromRight, .funSlide.funFromLeft, .funSlide.funToLeft, .funSlide.funToRight {
+    position: absolute; left: 0; top: 0; width: 100%;
+  }
+  .funSlide.funFromRight { transform: translateX(100%); }
+  .funSlide.funFromLeft { transform: translateX(-100%); }
+  .funSlide.funIn { transform: translateX(0); }
+  .funSlide.funToLeft { transform: translateX(-100%); }
+  .funSlide.funToRight { transform: translateX(100%); }
   .funWorth .funEmojis { font-size: 36px; line-height: 1.15; letter-spacing: 2px; margin: 4px 0 10px; }
   .funWorth .funLine { font-weight: 900; font-size: 22px; line-height: 1.25; margin: 0 0 6px; }
+  .funNav { display: flex; align-items: center; justify-content: center; gap: 14px; margin: 8px 0 4px; }
+  .funArrow {
+    width: 44px; height: 44px; border-radius: 999px; border: 3px solid #13294B;
+    background: #FED90F; color: #13294B; font-size: 28px; font-weight: 900; line-height: 1;
+    cursor: pointer; font-family: inherit; padding: 0;
+  }
+  .funCount { font-weight: 900; font-size: 16px; min-width: 5.5em; }
   .funWorth .funHint { font-size: 14px; font-weight: 700; opacity: .75; margin: 0; }
 
   .kbig.paper { background: #FBF6E8; min-height: 110px; }
@@ -467,7 +487,7 @@
   (function () {
     'use strict';
     var API = "https://script.google.com/macros/s/AKfycbwSO6lF3RuWl0oihI0plwrpb2UKTVDG699nbfXpsiD9y-ZIlRxf44L4SZgw7whRzpeF/exec";
-    var VER = "v7e-20261121";
+    var VER = "v7f-20261121";
     // Plain fetch with no cookies, so Google's multi-account sign-in never gets involved.
     function post(fn, args) {
       return fetch(API, {

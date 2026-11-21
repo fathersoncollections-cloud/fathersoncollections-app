@@ -1101,6 +1101,7 @@
     S.role = KID_ROLE; LS.set('role', KID_ROLE);
     S.boot = null; S.items = []; S.homeWanted = null; S.history = []; S.add = null;
     S.kidGreeting = true;
+    pickFunUnitRandom();
     go('kid', {}, true);
   }
   function exitKid() {
@@ -1145,6 +1146,7 @@
       loadHomeWanted().then(function (w) { var n = w.filter(function (x) { return kidSafe(x); }).length; if ($('kidHuntN')) $('kidHuntN').textContent = n + ' to find!'; });
       loadRewards().then(function (r) { if ($('kidPtsN') && r) $('kidPtsN').textContent = r.balance + ' points \u00B7 ' + r.level.name; }).catch(noop);
       maybeShowLetter();
+      bindFunSwipe();
     }).catch(oops);
   };
   SCREENS.kidStuff = function () {
@@ -1245,12 +1247,23 @@
     var el = $('dadLetter'); if (el) el.hidden = true;
     LS.set('kidLetterDay', londonDay());
   }
+  function bumpKidNoteCount() {
+    var n = parseInt(LS.get('kidNoteVisits') || '0', 10);
+    if (!(n >= 0)) n = 0;
+    n += 1;
+    if (n >= 5) {
+      LS.set('kidNoteVisits', '0');
+      return true;
+    }
+    LS.set('kidNoteVisits', String(n));
+    return false;
+  }
   function maybeShowLetter() {
     if (!S.kid) return;
     var greeting = !!S.kidGreeting;
     S.kidGreeting = false;
     if (LS.get('kidLetterDay') !== londonDay()) { showDadLetter(false); return; }
-    if (greeting) showDadNote();
+    if (greeting && bumpKidNoteCount()) showDadNote();
   }
 
   var DAD_NOTES = [
@@ -1315,13 +1328,108 @@
   }
 
   var FUN_UNITS = [
-    { id: 'donkey', emoji: '\uD83E\uDECF', art: 'a', one: 'donkey', many: 'donkeys', gbp: 350 },
-    { id: 'dog', emoji: '\uD83D\uDC36', art: 'a', one: 'dog', many: 'dogs', gbp: 225 },
-    { id: 'icecream', emoji: '\uD83C\uDF66', art: 'an', one: 'ice cream', many: 'ice creams', gbp: 2.5 },
-    { id: 'cow', emoji: '\uD83D\uDC04', art: 'a', one: 'Highland cow', many: 'Highland cows', gbp: 1000 },
-    { id: 'cards', emoji: '\u26BD', art: 'a', one: 'Match Attax-style pack', many: 'Match Attax-style packs', gbp: 1.5 },
-    { id: 'tractor', emoji: '\uD83D\uDE9C', art: 'a', one: 'Massey Ferguson tractor', many: 'Massey Ferguson tractors', gbp: 20000 }
+    { id: "donkey", emoji: "🫏", art: "a", one: "donkey", many: "donkeys", gbp: 350 },
+    { id: "dog", emoji: "🐶", art: "a", one: "dog", many: "dogs", gbp: 225 },
+    { id: "icecream", emoji: "🍦", art: "an", one: "ice cream", many: "ice creams", gbp: 2.5 },
+    { id: "cow", emoji: "🐄", art: "a", one: "Highland cow", many: "Highland cows", gbp: 1000 },
+    { id: "cards", emoji: "⚽", art: "a", one: "Match Attax-style pack", many: "Match Attax-style packs", gbp: 1.5 },
+    { id: "tractor", emoji: "🚜", art: "a", one: "Massey Ferguson tractor", many: "Massey Ferguson tractors", gbp: 20000 },
+    { id: "dons_ticket", emoji: "🎫", art: "an", one: "Aberdeen FC match ticket", many: "Aberdeen FC match tickets", gbp: 32 },
+    { id: "dons_home_top", emoji: "👕", art: "an", one: "Aberdeen FC home top", many: "Aberdeen FC home tops", gbp: 65 },
+    { id: "dons_scarf", emoji: "🧣", art: "a", one: "Dons scarf", many: "Dons scarves", gbp: 20 },
+    { id: "pittodrie_pie", emoji: "🥧", art: "a", one: "Pittodrie pie", many: "Pittodrie pies", gbp: 3.5 },
+    { id: "dons_season", emoji: "🎟️", art: "a", one: "Dons season ticket", many: "Dons season tickets", gbp: 380 },
+    { id: "match_attax_tin", emoji: "🗃️", art: "a", one: "Match Attax tin", many: "Match Attax tins", gbp: 10 },
+    { id: "football", emoji: "⚽", art: "a", one: "football", many: "footballs", gbp: 15 },
+    { id: "ronaldo_shirt", emoji: "👕", art: "a", one: "Ronaldo-style shirt", many: "Ronaldo-style shirts", gbp: 80 },
+    { id: "messi_shirt", emoji: "👕", art: "a", one: "Messi-style shirt", many: "Messi-style shirts", gbp: 80 },
+    { id: "haaland_shirt", emoji: "👕", art: "a", one: "Haaland-style shirt", many: "Haaland-style shirts", gbp: 80 },
+    { id: "football_boots", emoji: "👟", art: "a", one: "pair of football boots", many: "pairs of football boots", gbp: 55 },
+    { id: "gk_gloves", emoji: "🧤", art: "a", one: "pair of goalkeeper gloves", many: "pairs of goalkeeper gloves", gbp: 22 },
+    { id: "prem_ticket", emoji: "🎟️", art: "a", one: "Premier League ticket", many: "Premier League tickets", gbp: 55 },
+    { id: "sticker_pack", emoji: "📦", art: "a", one: "football sticker pack", many: "football sticker packs", gbp: 1.2 },
+    { id: "mf_toy", emoji: "🚜", art: "a", one: "Massey Ferguson toy tractor", many: "Massey Ferguson toy tractors", gbp: 28 },
+    { id: "pedal_tractor", emoji: "🚜", art: "a", one: "pedal tractor", many: "pedal tractors", gbp: 130 },
+    { id: "farm_set", emoji: "🌾", art: "a", one: "farm playset", many: "farm playsets", gbp: 40 },
+    { id: "matchbox", emoji: "🚗", art: "a", one: "boxed Matchbox car", many: "boxed Matchbox cars", gbp: 3 },
+    { id: "hotwheels", emoji: "🏎️", art: "a", one: "boxed Hot Wheels car", many: "boxed Hot Wheels cars", gbp: 3 },
+    { id: "hw_track", emoji: "🏁", art: "a", one: "Hot Wheels track set", many: "Hot Wheels track sets", gbp: 25 },
+    { id: "rc_car", emoji: "🚙", art: "a", one: "remote-control car", many: "remote-control cars", gbp: 30 },
+    { id: "lego_small", emoji: "🧱", art: "a", one: "small Lego set", many: "small Lego sets", gbp: 12 },
+    { id: "lego_mid", emoji: "🧱", art: "a", one: "mid-size Lego set", many: "mid-size Lego sets", gbp: 35 },
+    { id: "lego_big", emoji: "🧱", art: "a", one: "big Lego set", many: "big Lego sets", gbp: 90 },
+    { id: "lego_simpsons", emoji: "🧱", art: "a", one: "Lego Simpsons set", many: "Lego Simpsons sets", gbp: 160 },
+    { id: "krusty_burger", emoji: "🍔", art: "a", one: "Krusty Burger", many: "Krusty Burgers", gbp: 6 },
+    { id: "squishee", emoji: "🥤", art: "a", one: "Squishee", many: "Squishees", gbp: 3.5 },
+    { id: "pink_donut", emoji: "🍩", art: "a", one: "pink donut", many: "pink donuts", gbp: 1.5 },
+    { id: "buzz_cola", emoji: "🥤", art: "a", one: "Buzz Cola", many: "Buzz Colas", gbp: 1.2 },
+    { id: "lard_lad", emoji: "🍩", art: "a", one: "giant Lard Lad donut", many: "giant Lard Lad donuts", gbp: 15 },
+    { id: "simpsons_monopoly", emoji: "🎲", art: "a", one: "Simpsons Monopoly", many: "Simpsons Monopoly games", gbp: 25 },
+    { id: "bart_board", emoji: "🛹", art: "a", one: "Bart-style skateboard", many: "Bart-style skateboards", gbp: 28 },
+    { id: "krusty_doll", emoji: "🤡", art: "a", one: "Krusty doll", many: "Krusty dolls", gbp: 15 },
+    { id: "irnbru", emoji: "🧡", art: "an", one: "Irn-Bru can", many: "Irn-Bru cans", gbp: 1.2 },
+    { id: "irnbru_6", emoji: "🧃", art: "an", one: "Irn-Bru 6-pack", many: "Irn-Bru 6-packs", gbp: 5 },
+    { id: "tablet", emoji: "🍬", art: "a", one: "bag of tablet", many: "bags of tablet", gbp: 3.5 },
+    { id: "teacake", emoji: "🧁", art: "a", one: "Tunnock's teacake", many: "Tunnock's teacakes", gbp: 0.7 },
+    { id: "teacake_box", emoji: "🧁", art: "a", one: "box of Tunnock's teacakes", many: "boxes of Tunnock's teacakes", gbp: 3.5 },
+    { id: "haggis", emoji: "🥘", art: "a", one: "haggis supper", many: "haggis suppers", gbp: 6 },
+    { id: "bagpipes", emoji: "🎶", art: "a", one: "set of bagpipes", many: "sets of bagpipes", gbp: 500 },
+    { id: "highland_pony", emoji: "🐴", art: "a", one: "Highland pony", many: "Highland ponies", gbp: 1500 },
+    { id: "shortbread", emoji: "🍪", art: "a", one: "shortbread tin", many: "shortbread tins", gbp: 6 },
+    { id: "caramel_wafer", emoji: "🍫", art: "a", one: "Tunnock's caramel wafer", many: "Tunnock's caramel wafers", gbp: 0.55 },
+    { id: "scotch_pie", emoji: "🥧", art: "a", one: "Scotch pie", many: "Scotch pies", gbp: 2 },
+    { id: "mars_fried", emoji: "🍫", art: "a", one: "deep-fried Mars bar", many: "deep-fried Mars bars", gbp: 3.5 },
+    { id: "nessie", emoji: "🦕", art: "a", one: "Nessie soft toy", many: "Nessie soft toys", gbp: 12 },
+    { id: "rowie", emoji: "🥐", art: "an", one: "Aberdeen rowie", many: "Aberdeen rowies", gbp: 0.8 },
+    { id: "castle_ticket", emoji: "🏰", art: "an", one: "Edinburgh Castle ticket", many: "Edinburgh Castle tickets", gbp: 22 },
+    { id: "kilt_hire", emoji: "🧶", art: "a", one: "hired kilt", many: "hired kilts", gbp: 45 },
+    { id: "puppy", emoji: "🐶", art: "a", one: "puppy", many: "puppies", gbp: 400 },
+    { id: "kitten", emoji: "🐱", art: "a", one: "kitten", many: "kittens", gbp: 150 },
+    { id: "labrador", emoji: "🦮", art: "a", one: "golden Labrador", many: "golden Labradors", gbp: 900 },
+    { id: "goldfish", emoji: "🐠", art: "a", one: "goldfish", many: "goldfish", gbp: 3 },
+    { id: "hamster", emoji: "🐹", art: "a", one: "hamster", many: "hamsters", gbp: 20 },
+    { id: "rabbit", emoji: "🐰", art: "a", one: "rabbit", many: "rabbits", gbp: 40 },
+    { id: "budgie", emoji: "🦜", art: "a", one: "budgie", many: "budgies", gbp: 30 },
+    { id: "pizza", emoji: "🍕", art: "a", one: "pizza", many: "pizzas", gbp: 12 },
+    { id: "cinema", emoji: "🎬", art: "a", one: "cinema trip", many: "cinema trips", gbp: 12 },
+    { id: "choc_bar", emoji: "🍫", art: "a", one: "chocolate bar", many: "chocolate bars", gbp: 1.2 },
+    { id: "crisps", emoji: "🥨", art: "a", one: "packet of crisps", many: "packets of crisps", gbp: 1 },
+    { id: "sundae", emoji: "🍨", art: "an", one: "ice cream sundae", many: "ice cream sundaes", gbp: 5 },
+    { id: "milkshake", emoji: "🥛", art: "a", one: "milkshake", many: "milkshakes", gbp: 4 },
+    { id: "birthday_cake", emoji: "🎂", art: "a", one: "birthday cake", many: "birthday cakes", gbp: 22 },
+    { id: "fish_chips", emoji: "🍟", art: "a", one: "fish and chips", many: "fish and chips", gbp: 11 },
+    { id: "happy_meal", emoji: "🍟", art: "a", one: "Happy Meal", many: "Happy Meals", gbp: 4.2 },
+    { id: "slushie", emoji: "🧊", art: "a", one: "slushie", many: "slushies", gbp: 2.5 },
+    { id: "trampoline", emoji: "🤸", art: "a", one: "trampoline", many: "trampolines", gbp: 160 },
+    { id: "bike", emoji: "🚲", art: "a", one: "bike", many: "bikes", gbp: 180 },
+    { id: "drone", emoji: "🚁", art: "a", one: "drone", many: "drones", gbp: 80 },
+    { id: "console", emoji: "🎮", art: "a", one: "games console", many: "games consoles", gbp: 280 },
+    { id: "rubber_duck", emoji: "🦆", art: "a", one: "rubber duck", many: "rubber ducks", gbp: 2 },
+    { id: "balloon_ride", emoji: "🎈", art: "a", one: "hot-air balloon ride", many: "hot-air balloon rides", gbp: 160 },
+    { id: "toy_sub", emoji: "🚤", art: "a", one: "toy submarine", many: "toy submarines", gbp: 18 },
+    { id: "submarine", emoji: "🚢", art: "a", one: "submarine", many: "submarines", gbp: 3000000 },
+    { id: "yoyo", emoji: "🪀", art: "a", one: "yo-yo", many: "yo-yos", gbp: 5 },
+    { id: "teddy", emoji: "🧸", art: "a", one: "teddy bear", many: "teddy bears", gbp: 12 },
+    { id: "scooter", emoji: "🛴", art: "a", one: "scooter", many: "scooters", gbp: 50 },
+    { id: "skateboard", emoji: "🛹", art: "a", one: "skateboard", many: "skateboards", gbp: 40 },
+    { id: "board_game", emoji: "🎲", art: "a", one: "board game", many: "board games", gbp: 20 },
+    { id: "puzzle", emoji: "🧩", art: "a", one: "1,000-piece puzzle", many: "1,000-piece puzzles", gbp: 15 },
+    { id: "video_game", emoji: "👾", art: "a", one: "video game", many: "video games", gbp: 45 },
+    { id: "action_figure", emoji: "🦸", art: "an", one: "action figure", many: "action figures", gbp: 15 },
+    { id: "kite", emoji: "🪁", art: "a", one: "kite", many: "kites", gbp: 8 },
+    { id: "bubbles", emoji: "🫧", art: "a", one: "bubble machine", many: "bubble machines", gbp: 12 },
+    { id: "theme_park", emoji: "🎢", art: "a", one: "theme park ticket", many: "theme park tickets", gbp: 42 },
+    { id: "zoo", emoji: "🦁", art: "a", one: "zoo trip", many: "zoo trips", gbp: 22 },
+    { id: "soft_play", emoji: "🛝", art: "a", one: "soft play session", many: "soft play sessions", gbp: 8 },
+    { id: "bowling", emoji: "🎳", art: "a", one: "game of bowling", many: "games of bowling", gbp: 8 },
+    { id: "book", emoji: "📖", art: "a", one: "story book", many: "story books", gbp: 8 },
+    { id: "space_hopper", emoji: "🟠", art: "a", one: "space hopper", many: "space hoppers", gbp: 15 },
+    { id: "tent", emoji: "⛺", art: "a", one: "tent", many: "tents", gbp: 60 },
+    { id: "go_kart", emoji: "🏎️", art: "a", one: "go-kart session", many: "go-kart sessions", gbp: 25 },
+    { id: "pony_ride", emoji: "🐎", art: "a", one: "pony ride", many: "pony rides", gbp: 8 },
+    { id: "train_set", emoji: "🚂", art: "a", one: "train set", many: "train sets", gbp: 45 }
   ];
+
   function funTotalNum() {
     var t = S.boot && S.boot.funTotal;
     return t && typeof t.total === 'number' && isFinite(t.total) ? t.total : null;
@@ -1330,6 +1438,16 @@
     var i = parseInt(LS.get('kidFunUnit') || '0', 10);
     if (!(i >= 0 && i < FUN_UNITS.length)) i = 0;
     return i;
+  }
+  function pickFunUnitRandom() {
+    if (!FUN_UNITS.length) return;
+    LS.set('kidFunUnit', String(Math.floor(Math.random() * FUN_UNITS.length)));
+  }
+  function setFunUnitIndex(i, dir) {
+    var n = FUN_UNITS.length;
+    i = ((i % n) + n) % n;
+    LS.set('kidFunUnit', String(i));
+    paintFunWorth(dir || 0);
   }
   function funPhrase(n, u) {
     var art = u.art || 'a', one = u.one, many = u.many;
@@ -1348,30 +1466,149 @@
     if (n > 0) return 'a little bit of ' + art + ' ' + one;
     return 'a few treasures, and growing';
   }
-  function funWorthHtml() {
-    if (!S.kid) return '';
+  function funSlideInner() {
     var total = funTotalNum();
     if (total == null) return '';
     var u = FUN_UNITS[funUnitIndex()];
     var count = u.gbp ? total / u.gbp : 0;
-    var nShow = count >= 1 ? Math.min(10, Math.max(1, Math.round(count))) : 1;
+    var nShow = count >= 1 ? Math.min(8, Math.max(1, Math.round(Math.min(count, 8)))) : 1;
     var em = '';
     for (var i = 0; i < nShow; i++) em += u.emoji;
     var line = 'Our collection is worth ' + funPhrase(count, u) + '! ' + u.emoji;
-    return '<button type="button" class="funWorth" data-act="funCycle" aria-label="What our collection is worth. Tap to change the unit.">' +
-      '<p class="funLabel">What\u2019s our collection worth?</p>' +
-      '<div class="funEmojis" aria-hidden="true">' + em + '</div>' +
-      '<p class="funLine">' + esc(line) + '</p>' +
-      '<p class="funHint">Tap to try a different one</p></button>';
+    return '<div class="funEmojis" aria-hidden="true">' + em + '</div><p class="funLine">' + esc(line) + '</p>';
   }
-  function cycleFunWorth() {
+  function funWorthHtml() {
+    if (!S.kid) return '';
+    if (funTotalNum() == null) return '';
+    var i = funUnitIndex(), n = FUN_UNITS.length;
+    return '<div class="funWorth" id="funWorth">' +
+      '<p class="funLabel">What\u2019s our collection worth?</p>' +
+      '<div class="funViewport"><div class="funSlide">' + funSlideInner() + '</div></div>' +
+      '<div class="funNav">' +
+        '<button type="button" class="funArrow" data-act="funPrev" aria-label="Previous unit">\u2039</button>' +
+        '<span class="funCount" aria-live="polite">' + (i + 1) + ' / ' + n + '</span>' +
+        '<button type="button" class="funArrow" data-act="funNext" aria-label="Next unit">\u203A</button>' +
+      '</div>' +
+      '<p class="funHint">Swipe or tap to try another</p></div>';
+  }
+  function paintFunCount() {
+    var el = document.querySelector('#funWorth .funCount');
+    if (el) el.textContent = (funUnitIndex() + 1) + ' / ' + FUN_UNITS.length;
+  }
+  var FUN_ANIM = { busy: false, ignoreTap: false };
+  function paintFunWorth(dir) {
+    var view = document.querySelector('#funWorth .funViewport');
+    if (!view) return;
+    paintFunCount();
+    var next = document.createElement('div');
+    next.className = 'funSlide';
+    next.innerHTML = funSlideInner();
+    var old = view.querySelector('.funSlide');
+    if (!old || !dir || FUN_ANIM.busy) {
+      view.innerHTML = '';
+      view.appendChild(next);
+      FUN_ANIM.busy = false;
+      return;
+    }
+    FUN_ANIM.busy = true;
+    view.style.minHeight = old.offsetHeight + 'px';
+    next.classList.add(dir > 0 ? 'funFromRight' : 'funFromLeft');
+    view.appendChild(next);
+    old.classList.add(dir > 0 ? 'funToLeft' : 'funToRight');
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        next.classList.add('funIn');
+        old.classList.add('funOut');
+      });
+    });
+    var done = function () {
+      if (old && old.parentNode) old.parentNode.removeChild(old);
+      next.classList.remove('funFromRight', 'funFromLeft', 'funIn');
+      view.style.minHeight = '';
+      FUN_ANIM.busy = false;
+    };
+    var t = setTimeout(done, 380);
+    next.addEventListener('transitionend', function (e) {
+      if (e.propertyName && e.propertyName.indexOf('transform') < 0) return;
+      clearTimeout(t); done();
+    }, { once: true });
+  }
+  function cycleFunWorth(dir) {
     if (funTotalNum() == null) return;
-    LS.set('kidFunUnit', String((funUnitIndex() + 1) % FUN_UNITS.length));
-    var btn = document.querySelector('.funWorth');
-    if (!btn) return;
-    var dummy = document.createElement('div');
-    dummy.innerHTML = funWorthHtml();
-    if (dummy.firstChild) btn.parentNode.replaceChild(dummy.firstChild, btn);
+    dir = dir || 1;
+    if (FUN_ANIM.busy) return;
+    setFunUnitIndex(funUnitIndex() + dir, dir);
+  }
+  function bindFunSwipe() {
+    var root = document.getElementById('funWorth');
+    if (!root || root.getAttribute('data-fun-bound') === '1') return;
+    root.setAttribute('data-fun-bound', '1');
+    var st = { down: false, x: 0, y: 0, axis: '', dragging: false };
+    var view, slide;
+    function grab() {
+      view = root.querySelector('.funViewport');
+      slide = view ? view.querySelector('.funSlide:last-child') : null;
+    }
+    function start(x, y) {
+      if (FUN_ANIM.busy) return;
+      st.down = true; st.x = x; st.y = y; st.axis = ''; st.dragging = false;
+      grab();
+    }
+    function move(x, y, ev) {
+      if (!st.down || FUN_ANIM.busy) return;
+      var dx = x - st.x, dy = y - st.y;
+      if (!st.axis) {
+        if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+        st.axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+        if (st.axis === 'y') { st.down = false; return; }
+      }
+      if (st.axis !== 'x') return;
+      st.dragging = true;
+      if (ev && ev.cancelable) ev.preventDefault();
+      if (slide) {
+        slide.style.transition = 'none';
+        slide.style.transform = 'translateX(' + dx + 'px)';
+      }
+    }
+    function end(x) {
+      if (!st.down) return;
+      st.down = false;
+      var dx = x - st.x;
+      if (slide) { slide.style.transition = ''; slide.style.transform = ''; }
+      if (st.axis === 'x' && Math.abs(dx) >= 40) {
+        FUN_ANIM.ignoreTap = true;
+        cycleFunWorth(dx < 0 ? 1 : -1);
+        setTimeout(function () { FUN_ANIM.ignoreTap = false; }, 400);
+      }
+    }
+    root.addEventListener('touchstart', function (e) {
+      var t = e.changedTouches[0]; start(t.clientX, t.clientY);
+    }, { passive: true });
+    root.addEventListener('touchmove', function (e) {
+      var t = e.changedTouches[0]; move(t.clientX, t.clientY, e);
+    }, { passive: false });
+    root.addEventListener('touchend', function (e) {
+      var t = e.changedTouches[0]; end(t.clientX);
+    }, { passive: true });
+    root.addEventListener('touchcancel', function () { st.down = false; if (slide) { slide.style.transition = ''; slide.style.transform = ''; } }, { passive: true });
+    root.addEventListener('mousedown', function (e) {
+      if (e.button !== 0) return;
+      if (e.target.closest && e.target.closest('.funArrow')) return;
+      start(e.clientX, e.clientY);
+    });
+    window.addEventListener('mousemove', function (e) {
+      if (!st.down) return;
+      move(e.clientX, e.clientY, e);
+    });
+    window.addEventListener('mouseup', function (e) {
+      if (!st.down) return;
+      end(e.clientX);
+    });
+    root.addEventListener('click', function (e) {
+      if (e.target.closest && e.target.closest('.funArrow')) return;
+      if (FUN_ANIM.ignoreTap || FUN_ANIM.busy || st.dragging) { st.dragging = false; return; }
+      cycleFunWorth(1);
+    });
   }
 
   var RW = null;
@@ -3017,7 +3254,8 @@ SCREENS.who = function () {
       case 'letterOpen': showDadLetter(true); break;
       case 'letterGo': if (NAV.pushed > 0) layerBack(); else hideDadLetter(); break;
       case 'notesOpen': go('kidNotes'); break;
-      case 'funCycle': cycleFunWorth(); break;
+      case 'funPrev': cycleFunWorth(-1); break;
+      case 'funNext': cycleFunWorth(1); break;
       case 'noteOpen': showDadNote(el.getAttribute('data-i')); break;
       case 'noteGo': if (NAV.pushed > 0) layerBack(); else hideDadNote(); break;
       case 'rwAsk': askReward(el.getAttribute('data-id')); break;
@@ -3045,7 +3283,7 @@ SCREENS.who = function () {
   });
   $('stuckBtn').addEventListener('click', function () {
     if (!S.kid) return showHelp();
-    sheet('How it works', '<ul><li>\uD83E\uDDF8 <b>Our stuff</b>: tap anything to see it big or add a photo.</li><li>\u2B50 <b>Hunt</b>: things we\u2019re looking for. Found one? Tap \u201CFound it!\u201D</li><li>\uD83D\uDCF7 <b>Scan</b>: point at a box\u2019s barcode to see if we\u2019ve got it.</li><li>\u2709\uFE0F <b>Letter from Dad</b>: how it all started. It pops up once a day, and you can open it again any time.</li><li>\uD83D\uDCDD <b>Notes from Dad</b>: a little note on later visits, and all of them under Notes from Dad.</li><li>\uD83C\uDF66 <b>What\u2019s our collection worth?</b>: how many ice creams, dogs or tractors. Tap to change.</li><li>\u2B50 <b>My points</b>: earn points and ask Dad for rewards.</li><li>No faces in photos - hands are fine.</li></ul>',
+    sheet('How it works', '<ul><li>\uD83E\uDDF8 <b>Our stuff</b>: tap anything to see it big or add a photo.</li><li>\u2B50 <b>Hunt</b>: things we\u2019re looking for. Found one? Tap \u201CFound it!\u201D</li><li>\uD83D\uDCF7 <b>Scan</b>: point at a box\u2019s barcode to see if we\u2019ve got it.</li><li>\u2709\uFE0F <b>Letter from Dad</b>: how it all started. It pops up once a day, and you can open it again any time.</li><li>\uD83D\uDCDD <b>Notes from Dad</b>: a little note every few visits, and all of them under Notes from Dad.</li><li>\uD83C\uDF66 <b>What\u2019s our collection worth?</b>: swipe or tap to try ice creams, Dons tickets, tractors and lots more.</li><li>\u2B50 <b>My points</b>: earn points and ask Dad for rewards.</li><li>No faces in photos - hands are fine.</li></ul>',
       [{ label: '\u21BB Refresh', value: 'refresh' }, { label: 'Got it!', value: 'ok', cls: 'main' }]).then(function (v) { if (v === 'refresh') { S.boot = null; thumbsRefresh(); go(S.screen || 'kid', S.params, true); } });
   });
   $('homeBtn').addEventListener('click', function () { if (S.kid) { S.history = []; go('kid', {}, true); return; } if (S.role) { S.history = []; go(S.screen === 'home' ? 'settings' : 'home', {}, true); } });
@@ -3057,7 +3295,7 @@ SCREENS.who = function () {
   /* ---------------- start ---------------- */
   loadSavedThumbs();
   IDB.qAll().then(function (q) { NET.queueLen = q.length; renderNetBar(); if (q.length && navigator.onLine !== false) syncQueue(); }, noop);
-  if (S.kid) { S.role = KID_ROLE; S.kidGreeting = true; go('kid', {}, true); }
+  if (S.kid) { S.role = KID_ROLE; S.kidGreeting = true; pickFunUnitRandom(); go('kid', {}, true); }
   else if (!LS.get('seenGuide')) go('guide', { i: 0 }, true);
   else if (!S.role) go('who', {}, true);
   else if (S.role === PRIV && THEME.needsPin && !dadUnlocked()) askDadPin(S.role);
