@@ -1243,9 +1243,31 @@
     layerOpen(wasOpen);
     try { var b = el.querySelector('.letterGo'); if (b) b.focus(); } catch (e) { /* ignore */ }
   }
+  var LETTER_EVERY_DAYS = 10;
+  function londonDayDiff(fromIso, toIso) {
+    var a = String(fromIso || '').split('-').map(Number);
+    var b = String(toIso || '').split('-').map(Number);
+    if (a.length < 3 || b.length < 3 || !a[0] || !b[0]) return null;
+    var ms = Date.UTC(b[0], b[1] - 1, b[2]) - Date.UTC(a[0], a[1] - 1, a[2]);
+    return Math.round(ms / 86400000);
+  }
+  function letterLastShown() {
+    return LS.get('kidLetterShown') || LS.get('kidLetterDay') || '';
+  }
+  function markLetterShown() {
+    var d = londonDay();
+    LS.set('kidLetterShown', d);
+    LS.set('kidLetterDay', d);
+  }
+  function letterDue() {
+    var last = letterLastShown();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(last)) return true;
+    var n = londonDayDiff(last, londonDay());
+    return n == null || n >= LETTER_EVERY_DAYS;
+  }
   function hideDadLetter() {
     var el = $('dadLetter'); if (el) el.hidden = true;
-    LS.set('kidLetterDay', londonDay());
+    markLetterShown();
   }
   function bumpKidNoteCount() {
     var n = parseInt(LS.get('kidNoteVisits') || '0', 10);
@@ -1262,8 +1284,9 @@
     if (!S.kid) return;
     var greeting = !!S.kidGreeting;
     S.kidGreeting = false;
-    if (LS.get('kidLetterDay') !== londonDay()) { showDadLetter(false); return; }
-    if (greeting && bumpKidNoteCount()) showDadNote();
+    if (!greeting) return;
+    if (letterDue()) { markLetterShown(); showDadLetter(false); return; }
+    if (bumpKidNoteCount()) showDadNote();
   }
 
   var DAD_NOTES = [
@@ -3283,7 +3306,7 @@ SCREENS.who = function () {
   });
   $('stuckBtn').addEventListener('click', function () {
     if (!S.kid) return showHelp();
-    sheet('How it works', '<ul><li>\uD83E\uDDF8 <b>Our stuff</b>: tap anything to see it big or add a photo.</li><li>\u2B50 <b>Hunt</b>: things we\u2019re looking for. Found one? Tap \u201CFound it!\u201D</li><li>\uD83D\uDCF7 <b>Scan</b>: point at a box\u2019s barcode to see if we\u2019ve got it.</li><li>\u2709\uFE0F <b>Letter from Dad</b>: how it all started. It pops up once a day, and you can open it again any time.</li><li>\uD83D\uDCDD <b>Notes from Dad</b>: a little note every few visits, and all of them under Notes from Dad.</li><li>\uD83C\uDF66 <b>What\u2019s our collection worth?</b>: swipe or tap to try ice creams, Dons tickets, tractors and lots more.</li><li>\u2B50 <b>My points</b>: earn points and ask Dad for rewards.</li><li>No faces in photos - hands are fine.</li></ul>',
+    sheet('How it works', '<ul><li>\uD83E\uDDF8 <b>Our stuff</b>: tap anything to see it big or add a photo.</li><li>\u2B50 <b>Hunt</b>: things we\u2019re looking for. Found one? Tap \u201CFound it!\u201D</li><li>\uD83D\uDCF7 <b>Scan</b>: point at a box\u2019s barcode to see if we\u2019ve got it.</li><li>\u2709\uFE0F <b>Letter from Dad</b>: how it all started. It pops up every now and then, and you can open it again any time.</li><li>\uD83D\uDCDD <b>Notes from Dad</b>: a little note every few visits, and all of them under Notes from Dad.</li><li>\uD83C\uDF66 <b>What\u2019s our collection worth?</b>: swipe or tap to try ice creams, Dons tickets, tractors and lots more.</li><li>\u2B50 <b>My points</b>: earn points and ask Dad for rewards.</li><li>No faces in photos - hands are fine.</li></ul>',
       [{ label: '\u21BB Refresh', value: 'refresh' }, { label: 'Got it!', value: 'ok', cls: 'main' }]).then(function (v) { if (v === 'refresh') { S.boot = null; thumbsRefresh(); go(S.screen || 'kid', S.params, true); } });
   });
   $('homeBtn').addEventListener('click', function () { if (S.kid) { S.history = []; go('kid', {}, true); return; } if (S.role) { S.history = []; go(S.screen === 'home' ? 'settings' : 'home', {}, true); } });
