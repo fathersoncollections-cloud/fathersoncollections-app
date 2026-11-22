@@ -950,8 +950,64 @@
   .rwItem.rwOff { opacity: .55; background: #eef1f4; filter: grayscale(.35); }
   .rwItem.rwOff .rwEditHead { color: #5b6778; }
   .rwOffList { margin-bottom: 16px; }
-</style>
 
+  .gthumb.hasVideo .playIc, .hero.hasVideo .playIc, .khero.hasVideo .playIc, .lbImg .playIc {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: 46px; height: 46px; border-radius: 50%;
+    background: var(--yel); border: 3px solid var(--ink);
+    box-shadow: 0 3px 0 var(--ink);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 2; font-style: normal; padding: 0; right: auto;
+  }
+  .hero.hasVideo .playIc, .khero.hasVideo .playIc { width: 64px; height: 64px; }
+  .playTri {
+    display: block; width: 0; height: 0;
+    border-top: 9px solid transparent; border-bottom: 9px solid transparent;
+    border-left: 16px solid var(--ink); margin-left: 4px;
+  }
+  .hero.hasVideo .playTri, .khero.hasVideo .playTri { border-top-width: 12px; border-bottom-width: 12px; border-left-width: 20px; }
+  .khero { position: relative; }
+  .khero.hasVideo, .hero.hasVideo { cursor: pointer; }
+  .lbVideoBox { padding: 0; background: #000; width: 100%; min-height: 220px; max-height: 70vh; position: relative; }
+  .lbVideo {
+    width: 100%; height: min(70vh, 56vw); min-height: 220px;
+    border: 0; display: block; background: #000; border-radius: 16px;
+  }
+  .lbHint { color: #fff; font-size: 13px; font-weight: 700; text-align: center; opacity: .9; margin: 0; }
+  .kidGal { margin: 12px 0 0; }
+
+  .funCard { margin: 12px 0; scroll-margin-top: 76px; }
+  .funCard h2 { font-size: 20px; margin: 0 0 2px; }
+  .funSub { font-size: 13px; font-weight: 700; opacity: .8; margin: 0 0 10px; }
+  .setBarRow { display: flex; flex-direction: column; gap: 6px; width: 100%; text-align: left; font-family: inherit; color: inherit; background: var(--white); border: 3px solid var(--ink); border-radius: 14px; padding: 10px 12px; margin: 0 0 8px; cursor: pointer; }
+  .setBarRow.done { background: var(--skyL); }
+  .setBarName { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .setBarName b { font-size: 16px; }
+  .setBarName small { font-size: 13px; font-weight: 800; white-space: nowrap; }
+  .setBar { margin-top: 0; height: 14px; }
+  .onDayList { display: flex; flex-direction: column; gap: 6px; }
+  .onDayRow { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; font-family: inherit; color: inherit; background: var(--white); border: 3px solid var(--ink); border-radius: 14px; padding: 8px 10px; cursor: pointer; }
+  .onDayRow .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .onDayRow b { font-size: 15px; font-weight: 900; }
+  .onDayRow small { font-size: 13px; font-weight: 700; opacity: .85; }
+  .weekGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0 10px; }
+  .weekCell { background: var(--white); border: 3px solid var(--ink); border-radius: 14px; padding: 10px 8px; text-align: center; }
+  .weekCell b { display: block; font-size: 26px; line-height: 1; }
+  .weekCell small { display: block; font-size: 12px; font-weight: 800; margin-top: 4px; }
+  .swapGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; margin-top: 8px; }
+  .swapTile { display: flex; flex-direction: column; align-items: stretch; gap: 4px; text-align: left; font-family: inherit; color: inherit; background: var(--white); border: 3px solid var(--ink); border-radius: 14px; padding: 6px; cursor: pointer; }
+  .swapTile b { font-size: 13px; font-weight: 900; line-height: 1.2; }
+  .swapTile small { font-size: 11px; font-weight: 700; opacity: .8; }
+  .wheelWrap { position: relative; width: 260px; height: 260px; margin: 8px auto 16px; }
+  .wheelPointer { position: absolute; top: -6px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 14px solid transparent; border-right: 14px solid transparent; border-top: 22px solid var(--ink); z-index: 2; }
+  .wheel { width: 260px; height: 260px; border-radius: 50%; border: 5px solid var(--ink); box-shadow: inset 0 0 0 8px rgba(11,23,40,.08); }
+  .wheelResult { scroll-margin-top: 76px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; }
+  .wheelResult h2 { margin: 0; }
+  @media (prefers-reduced-motion: reduce) {
+    .wheel { transition: none !important; }
+  }
+
+</style>
 
   <style>
     #bootScreen{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center;background:#70CCF5;color:#13294B;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;z-index:50}
@@ -1038,7 +1094,7 @@
   (function () {
     'use strict';
     var API = "https://script.google.com/macros/s/AKfycbwSO6lF3RuWl0oihI0plwrpb2UKTVDG699nbfXpsiD9y-ZIlRxf44L4SZgw7whRzpeF/exec";
-    var VER = "v7p-20261122";
+    var VER = "v7q-20261122";
     // Plain fetch with no cookies, so Google's multi-account sign-in never gets involved.
     function post(fn, args) {
       return fetch(API, {

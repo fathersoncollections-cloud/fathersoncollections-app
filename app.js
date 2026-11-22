@@ -737,7 +737,7 @@
     }).join('');
     $('whoBadge').textContent = S.kid ? KID_ROLE + '\u2019s mode' : (S.role ? 'Hi ' + S.role + ' \u00B7 tap to switch' : THEME.tagline);
   }
-  var MORE_SCREENS = ['more', 'stats', 'posted', 'spares', 'history', 'export', 'help', 'settings', 'value', 'photos', 'novalue'];
+  var MORE_SCREENS = ['more', 'stats', 'posted', 'spares', 'swaps', 'wheel', 'history', 'export', 'help', 'settings', 'value', 'photos', 'novalue', 'checklists', 'rewards'];
   function go(screen, params, noHistory) {
     closeTour(); if ($('lightbox')) $('lightbox').hidden = true;
     if (S.kid) { if (screen === 'item') screen = 'kidItem'; else if (KID_SCREENS.indexOf(screen) < 0) { screen = 'kid'; params = {}; } }
@@ -1106,7 +1106,7 @@
   var HELP = {
     home: ['This is your to-do board.', '\u201CDo I own it?\u201D at the top: type any name and it tells you straight away. Or tap \uD83D\uDCF7 Scan and point at a box\u2019s barcode.', 'Each box has one button that sorts that job out. Start with whichever has the biggest number.', 'No signal? The app shows the copy saved on the phone and syncs your changes later.'],
     collection: ['Everything you own, with the newest photo of each.', 'Type in the search box or use the three filters (range, status, condition).', 'Tap any picture to open it.'],
-    item: ['This is one item.', 'Tap \u201CAdd photo / video\u201D to use the camera - it saves straight into the item\u2019s own Drive folder.', 'Tap a photo to see it big, or make it the main photo.', 'Tap \u201CEdit details\u201D to fix the name, category, condition and so on.', 'Tap a platform under \u201CPosted on\u201D once it\u2019s been posted.'],
+    item: ['This is one item.', 'Tap \u201CAdd photo / video\u201D to use the camera - it saves straight into the item\u2019s own Drive folder.', 'Tap a photo to see it big, or make it the main photo. Videos play here in the app (Open in Drive is still there if you need it).', 'Tap \u201CEdit details\u201D to fix the name, category, condition and so on.', 'Tap a platform under \u201CPosted on\u201D once it\u2019s been posted.'],
     edit: ['Change anything, then tap Save.', 'Year is just the 4 numbers, like 1999. Anything else goes in Year note.', 'Nothing gets deleted from here - the worst that can happen is a typo you can fix.'],
     add: ['Four quick steps: photo, name, range, condition.', 'On the name step you can scan or type the barcode so it\u2019s saved with the new item.', 'If we find a match we\u2019ll fill the name, maker and range for you to check. A catalogue picture is a reference only — it is never saved as our photo.', 'Everything else is optional - you can add it later.', 'If it looks like you already have it, I\u2019ll ask before adding a second one.'],
     wanted: ['Things you\u2019re hunting for.', 'Got one? Tap \u201CGot it\u201D and it moves into the collection (I\u2019ll check first).'],
@@ -1125,7 +1125,10 @@
     history: ['When each thing joined the collection, newest first.', 'Items with no date are at the bottom.'],
     missing: ['Everything still needed from every full-set checklist.', 'Search, or pick one checklist. Tap \u201CGot it\u201D to tick one off.'],
     export: ['Save a list into Drive as a spreadsheet file (CSV) or a PDF.', 'Filter in Collection first to export just some items.'],
-    help: ['All the help topics are on this page.', 'Tap a topic to open it, or take the tour.']
+    help: ['All the help topics are on this page.', 'Tap a topic to open it, or take the tour.'],
+    kid: ['Big buttons and photos, and never any prices.', 'On this day and set progress show on Home when there is something to see. Spin the wheel picks something to film next. Doubles to swap lists spare copies, with photos and no prices.'],
+    swaps: ['Things we own more than once, with photos and no prices.', 'Tap a photo to open that copy. Dad can still mark things for sale on Spares & duplicates.'],
+    wheel: ['Spin to pick something we already own to film next.', 'It prefers items that have not been posted yet. Tap the result to open that item.']
   };
   function showHelp() {
     var lines = HELP[S.screen] || HELP.home;
@@ -1152,7 +1155,7 @@
 
   /* ================= v4: Son's mode (big tiles, photos, no money, nothing Christmassy) ================= */
   var KID_ROLE = THEME.roles.filter(function (r) { return r !== PRIV; })[0] || 'Son';
-  var KID_SCREENS = ['kid', 'kidStuff', 'kidItem', 'kidHunt', 'kidBadges', 'kidRewards', 'kidNotes', 'pin', 'add'];
+  var KID_SCREENS = ['kid', 'kidStuff', 'kidItem', 'kidHunt', 'kidBadges', 'kidRewards', 'kidNotes', 'pin', 'add', 'swaps', 'wheel', 'checklists', 'checklist'];
   function enterKid() {
     LS.set('kidPrevRole', S.role || '');
     clearDadToken();                    // money needs the PIN again after Son's mode
@@ -1197,18 +1200,22 @@
         '<div id="kidJobs"></div>' +
         '<div id="kidEarn"></div>' +
         '</div>' +
+        '<div id="kidOnThisDay"></div><div id="kidSetBars"></div>' +
         '<div class="ownCard card"><label class="ownLabel" for="kidSearch">\uD83D\uDD0D Have we got it?</label><input id="kidSearch" class="ownInput" type="search" placeholder="Type a name\u2026" autocomplete="off"><div id="kidOwnOut"></div></div>' +
         '<div class="kgrid">' +
         '<button class="kbig yel" data-act="go" data-to="kidStuff"><span>\uD83E\uDDF8</span><b>Our stuff</b><small>' + mine.length + ' things</small></button>' +
         '<button class="kbig pink" data-act="go" data-to="kidHunt"><span>\u2B50</span><b>On the hunt</b><small id="kidHuntN">find these!</small></button>' +
         '<button class="kbig skyL" data-act="scan"><span>\uD83D\uDCF7</span><b>Scan a box</b><small>have we got it?</small></button>' +
         '<button class="kbig green" data-act="kidNew"><span>\u2795</span><b>New find!</b><small>snap it and save it</small></button>' +
+        '<button class="kbig yel" data-act="go" data-to="wheel"><span>\uD83C\uDFA1</span><b>Spin the wheel</b><small>what shall we film?</small></button>' +
+        '<button class="kbig" data-act="go" data-to="swaps"><span>\uD83D\uDD01</span><b>Doubles to swap</b><small>spares, no prices</small></button>' +
         '<button class="kbig paper" data-act="letterOpen"><span>\u2709\uFE0F</span><b>Letter from Dad</b><small>How it all started</small></button>' +
         '<button class="kbig paper" data-act="notesOpen"><span>\uD83D\uDCDD</span><b>Notes from Dad</b><small>little messages</small></button>' +
         '</div>' +
         '<div class="center" style="margin-top:18px"><button class="btn small" data-act="kidExit">\uD83D\uDD13 Grown-ups: full app</button></div>';
       setMain(h);
       bindOwnSearch('kidSearch', 'kidOwnOut');
+      paintHomeFunAndMiles();
       checkNewBadges().then(function (B) { var n = B.filter(function (b) { return b.got; }).length; if ($('kidBadgeN')) $('kidBadgeN').textContent = n + ' badge' + (n === 1 ? '' : 's') + ' so far!'; paintMissions(B); }).catch(noop);
       loadHomeWanted().then(function (w) { var n = w.filter(function (x) { return kidSafe(x); }).length; if ($('kidHuntN')) $('kidHuntN').textContent = n + ' to find!'; });
       loadRewards(true).then(function (r) { if ($('kidPtsN') && r) $('kidPtsN').textContent = r.balance + ' points \u00B7 ' + ((r.level && r.level.name) || ''); try { paintJobs(r); } catch (eJ) {} try { paintEarnPoints(r); } catch (eE) {} }).catch(noop);
@@ -1243,7 +1250,7 @@
       var heroWrap;
       if (it.folderId) {
         var hero = t ? '<img alt="" src="' + t + '">' : thumbInner(it.folderId);
-        heroWrap = '<div class="khero" id="kHero" data-fid="' + esc(it.folderId) + '">' + hero + '</div>';
+        heroWrap = '<div class="khero" id="kHero" data-act="heroOpen" data-fid="' + esc(it.folderId) + '" role="button">' + hero + '</div>';
       } else if (standinUrl(it)) {
         heroWrap = standinBlock(it, 'khero', ' id="kHero"');
       } else {
@@ -1251,13 +1258,40 @@
       }
       var h = backBtn() + '<div class="card center kidItem">' + heroWrap +
         '<h1>' + esc(it.name) + '</h1><div class="chips" style="justify-content:center">' + [it.range, it.character, it.year].filter(function (x) { return x && !/^unknown$/i.test(x); }).map(function (x) { return '<span class="chip on">' + esc(x) + '</span>'; }).join('') + '</div>' +
+        '<div id="kGallery" class="gallery kidGal"></div>' +
         '<div class="stack" style="margin-top:14px"><button class="btn main full kbtn" data-act="kidSnap">\uD83D\uDCF7 Add a photo</button>' +
         (it.status === 'Wanted' || it.status === 'On order' ? '<button class="btn green full kbtn" data-act="kidGotItem">\uD83C\uDF89 We got it!</button>' : '<div class="pill green" style="font-size:18px;padding:6px 14px">\u2705 We\u2019ve got this!</div>') +
         '</div></div>';
       setMain(h);
-      if (it.folderId) { watchThumbs(); if (!t) call('getItemPhotos', it.folderId).then(function (ph) { var f = (ph || []).filter(function (x) { return x.thumb; })[0]; if (f && $('kHero') && typeof S.thumbs[it.folderId] !== 'string') { shrinkThumb(f.thumb).then(function (s) { if (s && $('kHero')) { S.thumbs[it.folderId] = s; paintThumb(it.folderId); } }); } }).catch(noop); }
+      if (it.folderId) {
+        watchThumbs();
+        call('getItemPhotos', it.folderId).then(function (ph) {
+          S.gallery = ph || [];
+          paintKidItemMedia();
+          var f = S.gallery.filter(function (x) { return x.thumb; })[0];
+          if (f && $('kHero') && typeof S.thumbs[it.folderId] !== 'string') {
+            shrinkThumb(f.thumb).then(function (s) { if (s && $('kHero')) { S.thumbs[it.folderId] = s; paintThumb(it.folderId); paintKidItemMedia(); } });
+          }
+        }).catch(noop);
+      }
     }).catch(oops);
   };
+  function paintKidItemMedia() {
+    var hero = $('kHero'), box = $('kGallery'), list = S.gallery || [];
+    if (hero && list.length) {
+      hero.setAttribute('data-act', 'heroOpen');
+      hero.setAttribute('role', 'button');
+      var first = list[0];
+      hero.classList.toggle('hasVideo', !!first.video);
+      if (first.video && !hero.querySelector('.playIc')) hero.insertAdjacentHTML('beforeend', playBadgeHtml());
+      if (!first.video) {
+        var ic = hero.querySelector('.playIc'); if (ic && ic.parentNode) ic.parentNode.removeChild(ic);
+      }
+    }
+    if (box) {
+      box.innerHTML = list.length ? list.map(function (x, i) { return galleryThumbHtml(x, i); }).join('') : '';
+    }
+  }
   SCREENS.kidHunt = function () {
     busy('Getting the hunt list\u2026');
     loadHomeWanted().then(function (list) {
@@ -3190,7 +3224,11 @@ SCREENS.who = function () {
       if (b.missing && (b.missing.tabs.length || b.missing.columns.length)) {
         h += '<div class="warn">\uD83D\uDEA7 The sheet is still being tidied up, so a few bits (like ' + esc(b.missing.columns.concat(b.missing.tabs).join(', ')) + ') will appear once that\u2019s finished. Everything else works.</div>';
       }
+      h += '<div id="homeOnThisDay"></div><div id="homeSetBars"></div>';
+      if (S.role === PRIV) h += '<div id="homeWeek"></div>';
       h += '<div class="tiles">';
+      h += '<div class="card yel tile"><div class="head">\uD83C\uDFA1 Spin the wheel</div><div class="hint">Picks something we already own to film next. Prefers things not posted yet.</div><button class="btn main" data-act="go" data-to="wheel">Have a spin</button></div>';
+      h += '<div class="card tile"><div class="head">\uD83D\uDD01 Doubles to swap</div><div class="hint">Spare copies, with photos and no prices.</div><button class="btn main" data-act="go" data-to="swaps">See doubles</button></div>';
       // Photos to take
       h += '<div class="card yel tile"><div class="head">\uD83D\uDCF8 Photos to take</div><div class="big">' + t.photos.count + '</div>';
       if (t.photos.next) {
@@ -3225,6 +3263,7 @@ SCREENS.who = function () {
       h += '<button class="btn pink full" style="margin-top:12px" data-act="kidEnter">\uD83E\uDDD2 ' + esc(KID_ROLE) + '\u2019s mode (big buttons, no prices)</button>';
       h += '<div class="row" style="margin-top:6px"><button class="btn small" data-act="refresh">\u21BB Refresh</button><button class="btn small" data-act="go" data-to="stats">\uD83D\uDCCA Stats</button><button class="btn small" data-act="go" data-to="checklists">\u2705 Checklists</button><button class="btn small" data-act="go" data-to="help">\u2753 Help</button></div>';
       setMain(h);
+      paintHomeFunAndMiles();
       if (LS.get('tourPending')) { LS.set('tourPending', ''); setTimeout(startTour, 350); }
       var hs = $('homeSearch');
       hs.addEventListener('keydown', function (e) { if (e.key === 'Enter') { hs.blur(); } });
@@ -3366,22 +3405,57 @@ SCREENS.who = function () {
         S.gallery = ph;
         if (!ph.length) { $('hero').innerHTML = '<span style="font-size:44px">\uD83D\uDCF7</span>'; $('gallery').innerHTML = '<div class="hint">No photos yet.</div>'; $('nudge').innerHTML = '<div class="nudge">\uD83D\uDCF7 Missing photo! Snap the front first - no faces in shot.</div>'; return; }
         var first = ph[0];
-        $('hero').innerHTML = first.thumb ? '<img alt="' + esc(first.name) + '" src="' + first.thumb + '"><span class="zoom">\uD83D\uDD0D Tap to zoom</span>' : '<span style="font-size:44px">' + (first.video ? '\uD83C\uDFAC' : '\uD83D\uDCF7') + '</span>';
+        $('hero').classList.toggle('hasVideo', !!first.video);
+        $('hero').innerHTML = (first.thumb ? '<img alt="' + esc(first.name) + '" src="' + first.thumb + '">' : '<span style="font-size:44px">' + (first.video ? '\uD83C\uDFAC' : '\uD83D\uDCF7') + '</span>') +
+          (first.video ? playBadgeHtml() + '<span class="zoom">\u25B6 Play video</span>' : '<span class="zoom">\uD83D\uDD0D Tap to zoom</span>');
         $('gallery').innerHTML = ph.map(function (x, i) {
-          return '<button class="gthumb' + (x.main ? ' main' : '') + '" data-act="openPhoto" data-i="' + i + '" aria-label="' + esc(x.name) + '">' + (x.thumb ? '<img alt="" src="' + x.thumb + '">' : '<span>' + (x.video ? '\uD83C\uDFAC' : '\uD83D\uDCF7') + '</span>') + (x.main ? '<b>Main</b>' : '') + (x.video ? '<i>\u25B6</i>' : '') + '</button>';
-        }).join('') + '<p class="hint" style="grid-column:1/-1">' + ph.length + ' photo' + (ph.length === 1 ? '' : 's') + ' \u00B7 tap one to see it big or make it the main photo</p>';
+          return galleryThumbHtml(x, i);
+        }).join('') + '<p class="hint" style="grid-column:1/-1">' + ph.length + ' photo' + (ph.length === 1 ? '' : 's') + (ph.some(function (x) { return x.video; }) ? ' or video' : '') + ' \u00B7 tap one to see it big, or play a video here</p>';
         if (!ph.some(function (x) { return /- back\b/i.test(x.name); }) && !ph.some(function (x) { return x.video; })) $('nudge').innerHTML = '<div class="nudge">Tip: a photo of the back or box side helps with values later.</div>';
       }).catch(function () { if (!$('hero') || !$('gallery')) return; $('hero').innerHTML = '<span style="font-size:44px">\uD83D\uDCF7</span>'; $('gallery').innerHTML = '<div class="hint">Couldn\u2019t load the photos - tap Refresh in \u201CI\u2019m stuck\u201D.</div>'; });
     }).catch(oops);
   };
+  function driveFileId(x) {
+    if (!x) return '';
+    if (x.id && /^[\w-]{10,}$/.test(String(x.id))) return String(x.id);
+    var m = String(x.url || '').match(/\/d\/([\w-]{10,})/) || String(x.url || '').match(/[?&]id=([\w-]{10,})/);
+    return m ? m[1] : '';
+  }
+  function drivePreviewUrl(x) {
+    var id = driveFileId(x);
+    return id ? 'https://drive.google.com/file/d/' + encodeURIComponent(id) + '/preview' : '';
+  }
+  function driveOpenUrl(x) {
+    if (x && x.url) return x.url;
+    var id = driveFileId(x);
+    return id ? 'https://drive.google.com/file/d/' + encodeURIComponent(id) + '/view' : '';
+  }
+  function playBadgeHtml() {
+    return '<span class="playIc" aria-hidden="true"><span class="playTri"></span></span>';
+  }
+  function galleryThumbHtml(x, i) {
+    return '<button class="gthumb' + (x.main ? ' main' : '') + (x.video ? ' hasVideo' : '') + '" data-act="openPhoto" data-i="' + i + '" aria-label="' + esc((x.video ? 'Play video: ' : '') + (x.name || 'Photo')) + '">' +
+      (x.thumb ? '<img alt="" src="' + x.thumb + '">' : '<span>' + (x.video ? '\uD83C\uDFAC' : '\uD83D\uDCF7') + '</span>') +
+      (x.main ? '<b>Main</b>' : '') + (x.video ? playBadgeHtml() : '') + '</button>';
+  }
   function openPhoto(i) {
     var x = (S.gallery || [])[i]; if (!x) return;
     var lb = $('lightbox');
-    lb.innerHTML = '<div class="lbInner"><div class="lbImg">' + (x.thumb ? '<img alt="" src="' + x.thumb + '">' : '<span style="font-size:60px">' + (x.video ? '\uD83C\uDFAC' : '\uD83D\uDCF7') + '</span>') + '</div>' +
-      '<div class="lbName">' + esc(x.name) + (x.main ? ' \u00B7 <b>main photo</b>' : '') + '</div>' +
+    var preview = x.video ? drivePreviewUrl(x) : '';
+    var openUrl = driveOpenUrl(x);
+    var media;
+    if (x.video && preview) {
+      media = '<div class="lbImg lbVideoBox"><iframe class="lbVideo" src="' + esc(preview) + '" title="' + esc(x.name || 'Video') + '" allow="autoplay; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>';
+    } else {
+      media = '<div class="lbImg">' + (x.thumb ? '<img alt="" src="' + x.thumb + '">' : '<span style="font-size:60px">' + (x.video ? '\uD83C\uDFAC' : '\uD83D\uDCF7') + '</span>') + (x.video ? playBadgeHtml() : '') + '</div>';
+    }
+    lb.setAttribute('aria-label', x.video ? 'Video' : 'Photo');
+    lb.innerHTML = '<div class="lbInner">' + media +
+      '<div class="lbName">' + esc(x.name) + (x.main ? ' \u00B7 <b>main photo</b>' : '') + (x.video ? ' \u00B7 video' : '') + '</div>' +
+      (x.video ? '<p class="lbHint">Plays here in the app. If it doesn\u2019t start, use Open in Drive.</p>' : '') +
       '<div class="row lbBtns">' + (i > 0 ? '<button class="btn small" data-act="openPhoto" data-i="' + (i - 1) + '">\u2190</button>' : '') +
       (!x.main && !x.video ? '<button class="btn small yel" data-act="makeMain" data-i="' + i + '">\u2B50 Make main photo</button>' : '') +
-      '<a class="btn small" href="' + esc(x.url) + '" target="_blank" rel="noopener">Open in Drive \u2197</a>' +
+      (openUrl ? '<a class="btn small" href="' + esc(openUrl) + '" target="_blank" rel="noopener">Open in Drive \u2197</a>' : '') +
       (i < S.gallery.length - 1 ? '<button class="btn small" data-act="openPhoto" data-i="' + (i + 1) + '">\u2192</button>' : '') +
       '<button class="btn small main" data-act="closePhoto">Close</button></div></div>';
     var wasOpen = !lb.hidden;
@@ -3389,7 +3463,7 @@ SCREENS.who = function () {
     layerOpen(wasOpen);
     if (!x.video) call('getPhotoLarge', S.current.key, x.id).then(function (r) {
       if (lb.hidden || !r || !r.src) return;
-      var img = lb.querySelector('.lbImg img'); if (img) img.src = r.src; else lb.querySelector('.lbImg').innerHTML = '<img alt="" src="' + r.src + '">';
+      var img = lb.querySelector('.lbImg img'); if (img) img.src = r.src; else if (lb.querySelector('.lbImg')) lb.querySelector('.lbImg').innerHTML = '<img alt="" src="' + r.src + '">';
     }).catch(function () { /* keep the small one */ });
   }
 
@@ -3805,10 +3879,11 @@ SCREENS.who = function () {
     busy('Counting\u2026');
     call('getChecklists').then(function (cls) {
       done();
-      setMain('<h1>\u2705 Full-set checklists</h1><div class="list">' + cls.map(function (c) {
-        var p = pct(c.owned, c.total);
+      var list = sortSetsClosest(cls);
+      setMain(backBtn() + '<h1>' + (S.kid ? '\u2705 Our sets' : '\u2705 Full-set checklists') + '</h1><p class="hint">Closest to a finished set first.</p><div class="list">' + list.map(function (c) {
+        var p = pct(c.owned, c.total), done = c.owned >= c.total;
         return '<button class="li" style="width:100%;text-align:left;font-family:inherit;color:inherit" data-act="go" data-to="checklist" data-tab="' + esc(c.tab) + '"><div class="grow">' + esc(clTitle(c.tab)) +
-          '<small>' + c.owned + ' of ' + c.total + ' (' + p + '%)</small><div class="bar" style="margin-top:6px"><div style="width:' + p + '%"></div></div></div><span>\u203A</span></button>';
+          '<small>' + c.owned + ' of ' + c.total + ' (' + p + '%)' + (done ? ' \u2014 complete!' : '') + '</small><div class="bar" style="margin-top:6px"><div style="width:' + p + '%"></div></div></div><span>\u203A</span></button>';
       }).join('') + '</div>');
     }).catch(oops);
   };
@@ -3898,6 +3973,8 @@ SCREENS.who = function () {
       ['stats', '\uD83D\uDCCA', 'Stats', 'Counts, categories and charts'],
       ['posted', '\uD83D\uDCE3', 'Posted on socials', 'What\u2019s been posted and what hasn\u2019t'],
       ['spares', '\uD83D\uDD01', 'Spares & duplicates', 'Owned more than once - swap or sell'],
+      ['swaps', '\uD83D\uDD01', 'Doubles to swap', 'Spare copies with photos, no prices'],
+      ['wheel', '\uD83C\uDFA1', 'Spin the wheel', 'Pick something we own to film next'],
       ['history', '\uD83D\uDDD3\uFE0F', 'Item history', 'When each thing joined, and where from'],
       ['missing', '\uD83E\uDDE9', 'Missing list', 'Everything still needed for the full sets'],
       ['checklists', '\u2705', 'Checklists', 'How close each full set is'],
@@ -3919,14 +3996,15 @@ SCREENS.who = function () {
   /* ---------------- Help ---------------- */
   var FAQ = [
     ['\u2795 Adding something new', ['Tap <b>Add</b> at the bottom.', 'Take a photo (front first), type a name, pick the category, then the condition. That\u2019s it.', 'Everything else (year, maker, packaging, price) is optional under \u201CMore details\u201D.', 'If it looks like you already have it, I\u2019ll ask before adding a second one.']],
-    ['\uD83D\uDCF8 Photos', ['Open any item and tap <b>Add photo / video</b>. It saves straight into that item\u2019s own Drive folder.', 'Tap <b>New main photo</b> to replace the picture that shows in the lists. The old one stays in the folder - nothing is deleted.', 'Tap any photo to see it big, then <b>Make main photo</b> to pick a different main one.', 'No faces in shot, please. Hands are fine.']],
+    ['\uD83D\uDCF8 Photos', ['Open any item and tap <b>Add photo / video</b>. It saves straight into that item\u2019s own Drive folder. Videos play in the app when you tap them; Open in Drive is still there as a fallback.', 'Tap <b>New main photo</b> to replace the picture that shows in the lists. The old one stays in the folder - nothing is deleted.', 'Tap any photo to see it big, then <b>Make main photo</b> to pick a different main one.', 'No faces in shot, please. Hands are fine.']],
     ['\uD83E\uDD14 Do I own it? + barcode scan', ['Type any name in <b>Do I own it?</b> on Home - it tells you yes, maybe or no as you type, even with spelling mistakes.', 'Tap <b>\uD83D\uDCF7 Scan</b> and point the camera at a box\u2019s barcode. If the barcode is saved on an item it matches straight away.', 'First time for a barcode? Search the name and tap the item to save the barcode on it. Or open any item and tap <b>Save barcode</b>.']],
     ['\uD83D\uDCF4 No signal', ['The last collection you opened is kept on the phone, with photos you\u2019ve already seen.', 'Adds, edits, ticks and photos made with no signal are kept on the phone and sync on their own when you\u2019re back online.']],
     ['\uD83E\uDDD2 ' + KID_ROLE + '\u2019s mode', ['Big buttons and photos, no prices. Tick off finds on the hunt list and add photos.', 'A <b>letter from Dad</b> opens the first time each day, and you can read it again any time from the Home tile.', 'The <b>\u2B50 My points</b> page awards points for photos (once Dad says yes), ticks and new finds, with levels and real rewards Dad sets. Secret or hidden things never earn points, and there is never any money.', 'The <b>\uD83C\uDFC6 Badges</b> wall unlocks badges from the collection (10 Funkos, first rare find, finds this month, photos added\u2026) with confetti for each new one. No money badges, and secret or Christmas things never count.', 'Getting back to the full app needs ' + esc(THEME.privateRole) + '\u2019s PIN.']],
     ['\uD83D\uDD0D Finding things', ['Use the search box on Home or in Collection. It searches names, characters, lines and IDs.', 'Tap <b>Filters</b> to narrow down by category, line, condition, status, posted or photos.', 'Use the sort menu for newest first, A to Z or by year.']],
     ['\u2B50 Wanted and missing', ['<b>Wanted</b> is your hunt list. Tap <b>Got it</b> when one arrives and it moves into the collection.', '<b>Missing list</b> (under More) shows everything still needed from every full-set checklist in one place.', '<b>Checklists</b> shows how close each set is.']],
     ['\uD83D\uDCE3 Posted on socials', ['Each item page has the platforms as buttons. Tap one to tick it once it\u2019s posted.', 'Under More \u2192 <b>Posted on socials</b> you can see what hasn\u2019t been posted yet - handy for planning.']],
-    ['\uD83D\uDD01 Spares & duplicates', ['Under More \u2192 <b>Spares & duplicates</b> you\u2019ll see anything you own more than once (same name, or a quantity over 1), plus names that nearly match.', 'Tap <b>Mark for sale</b> on the copy you want to sell or swap. It stays in the sheet, just with the status For sale.', 'Values only show for ' + esc(THEME.privateRole) + '.']],
+    ['\uD83D\uDD01 Spares, doubles and the film wheel', ['<b>Doubles to swap</b> (Home, or More) lists spare copies with photos and no prices, in both modes.', 'Under More \u2192 <b>Spares & duplicates</b> ' + esc(THEME.privateRole) + ' can still mark a copy for sale. Values only show there, and only for ' + esc(THEME.privateRole) + '.', 'Tap <b>Spin the wheel</b> to pick something we already own to film next. It prefers items not posted yet.']],
+    ['\uD83C\uDF89 Milestones, On this day and set progress', ['The app celebrates when the collection hits 425, 450, 500, then every 50 items, and when a full set is completed. Each milestone is shown once.', '<b>On this day</b> on Home shows items that were bought, added or filmed on today\u2019s date in past years. If there are none, the card stays hidden. Bought dates only show for ' + esc(THEME.privateRole) + '.', '<b>Set progress</b> on Home (and Checklists) shows a bar per set, closest to finished first.']],
     ['\uD83D\uDCE4 Share a find', ['Open an item and tap <b>Share this find</b>. It makes a 1080\u00D71350 picture (photo, name and line, @simpsonscollect) ready for Instagram.', 'Tap <b>Share</b> to send it straight to an app, or <b>Save picture</b>. There are never prices on it, and it isn\u2019t offered for secret or Christmas things.']],
     ['\uD83D\uDD0E Price check', ['On any item (' + esc(THEME.privateRole) + '\u2019s view) tap <b>Price check</b> for eBay UK <b>sold</b> listings - newest, highest or lowest first - or a Google search. It only opens the links; nothing is saved.']],
     ['\uD83D\uDDD3\uFE0F Item history', ['Under More \u2192 <b>Item history</b>: a timeline of when things joined, month by month, with where they came from.', 'It reads Purchase Date, then Date got, then Photo date from the sheet. Anything with no date is listed at the bottom so you can fill it in.', 'Prices only show for ' + esc(THEME.privateRole) + '.']],
@@ -4253,6 +4331,259 @@ SCREENS.who = function () {
     if (d.p === 'm') return MON_NAMES[d.m].slice(0, 3);
     return 'Sometime';
   }
+
+  /* ---------------- v7q: milestones, on this day, set bars, swaps, week card, spin the wheel ---------------- */
+  function funOwned() {
+    return (S.kid ? (typeof kidItems === 'function' ? kidItems() : (S.items || []).filter(function (it) { return isOwned(it) && kidSafe(it); })) : (S.items || []).filter(function (it) { return isOwned(it) && !neverShow(it.name); }));
+  }
+  function milestoneMarks(n) {
+    var out = [425, 450, 500], x = 550;
+    while (x <= n + 50) { out.push(x); x += 50; }
+    return out.filter(function (t) { return t <= n; });
+  }
+  function loadMileBook() {
+    try { return JSON.parse(LS.get('milestones') || 'null') || { init: false, counts: [], sets: {} }; }
+    catch (e) { return { init: false, counts: [], sets: {} }; }
+  }
+  function saveMileBook(b) { try { LS.set('milestones', JSON.stringify(b)); } catch (e) { /* ignore */ } }
+  function checkMilestones() {
+    Promise.resolve(loadChecklists()).then(function (cls) {
+      var n = (S.items || []).filter(function (it) { return isOwned(it) && !neverShow(it.name); }).length;
+      var reached = milestoneMarks(n);
+      var doneSets = (cls || []).filter(function (c) { return c && c.total > 0 && c.owned >= c.total; }).map(function (c) { return { id: c.tab, title: clTitle(c.tab || c.title || '') }; });
+      var book = loadMileBook();
+      if (!book.init) {
+        book.init = true;
+        book.counts = reached.slice();
+        book.sets = {};
+        doneSets.forEach(function (s) { book.sets[s.id] = 1; });
+        saveMileBook(book);
+        return;
+      }
+      var newCounts = reached.filter(function (t) { return book.counts.indexOf(t) < 0; });
+      var newSets = doneSets.filter(function (s) { return !book.sets[s.id]; });
+      if (!newCounts.length && !newSets.length) return;
+      newCounts.forEach(function (t) { book.counts.push(t); });
+      newSets.forEach(function (s) { book.sets[s.id] = 1; });
+      saveMileBook(book);
+      celebrateMilestones(newCounts, newSets, n);
+    }).catch(noop);
+  }
+  function celebrateMilestones(counts, sets, n) {
+    confetti();
+    var bits = [];
+    counts.forEach(function (t) { bits.push('We just hit <b>' + t + '</b> things in the collection!'); });
+    sets.forEach(function (s) { bits.push('The <b>' + esc(s.title) + '</b> set is complete!'); });
+    sheet('\uD83C\uDF89 Milestone!', '<p>' + bits.join('</p><p>') + '</p><p class="hint">' + (n ? n + ' things and counting.' : '') + '</p>', [{ label: 'Yay!', value: 'ok', cls: 'main' }]);
+  }
+  var CLS_CACHE = { data: null, at: 0 };
+  function loadChecklists() {
+    if (CLS_CACHE.data && Date.now() - CLS_CACHE.at < 300000) return Promise.resolve(CLS_CACHE.data);
+    return call('getChecklists').then(function (cls) {
+      CLS_CACHE.data = cls || []; CLS_CACHE.at = Date.now(); return CLS_CACHE.data;
+    }, function () { return CLS_CACHE.data || []; });
+  }
+  function sortSetsClosest(cls) {
+    return (cls || []).slice().filter(function (c) { return c && c.total > 0; }).sort(function (a, b) {
+      var ac = a.owned >= a.total, bc = b.owned >= b.total;
+      if (ac !== bc) return ac ? 1 : -1;
+      var ar = a.total - a.owned, br = b.total - b.owned;
+      if (ar !== br) return ar - br;
+      return pct(b.owned, b.total) - pct(a.owned, a.total) || String(a.title || a.tab).localeCompare(String(b.title || b.tab));
+    });
+  }
+  function setBarsHtml(cls, limit) {
+    var list = sortSetsClosest(cls);
+    if (!list.length) return '';
+    var show = limit ? list.slice(0, limit) : list;
+    var rows = show.map(function (c) {
+      var p = pct(c.owned, c.total), done = c.owned >= c.total;
+      return '<button type="button" class="setBarRow' + (done ? ' done' : '') + '" data-act="go" data-to="checklist" data-tab="' + esc(c.tab) + '">' +
+        '<span class="setBarName"><b>' + esc(clTitle(c.tab || c.title || '')) + '</b><small>' + c.owned + '/' + c.total + (done ? ' \u2014 complete!' : '') + '</small></span>' +
+        '<span class="bar setBar" role="img" aria-label="' + p + ' percent"><div style="width:' + p + '%"></div></span></button>';
+    }).join('');
+    return '<div class="funCard setCard"><h2>Set progress</h2><p class="funSub">Closest to a finished set first</p>' + rows +
+      (list.length > show.length ? '<button type="button" class="btn small" data-act="go" data-to="checklists">See all sets</button>' : '') + '</div>';
+  }
+  function onThisDayItems(hist) {
+    var today = londonDay(), parts = today.split('-'), mo = +parts[1], day = +parts[2], yr = +parts[0];
+    var out = [], seen = {};
+    function add(it, when, kind, year) {
+      if (!it || (S.kid && !kidSafe(it))) return;
+      if (neverShow(it.name)) return;
+      var k = (it.key || it.name) + '|' + kind + '|' + year;
+      if (seen[k]) return;
+      seen[k] = 1;
+      out.push({ it: it, kind: kind, year: year, ago: yr - year, when: when });
+    }
+    var items = S.items || [];
+    var byKey = {};
+    items.forEach(function (it) { byKey[it.key] = it; });
+    function consider(it, raw, kind, allow) {
+      if (!allow || !raw) return;
+      var d = parseLoose(raw);
+      if (!d || d.p !== 'd' || d.m !== mo - 1 || d.d !== day || d.y >= yr) return;
+      add(it, d, kind, d.y);
+    }
+    if (hist) {
+      Object.keys(hist).forEach(function (key) {
+        var h = hist[key], it = byKey[key];
+        if (!it) return;
+        consider(it, h.dg, 'Got', true);
+        consider(it, h.ph, 'Filmed', true);
+        consider(it, h.pd, 'Bought', isPriv() && !S.kid);
+      });
+    }
+    items.forEach(function (it) {
+      consider(it, it.dg || it.dateGot, 'Got', true);
+      consider(it, it.ph || it.photoDate, 'Filmed', true);
+      consider(it, it.pd || it.purchaseDate, 'Bought', isPriv() && !S.kid);
+    });
+    out.sort(function (a, b) { return b.year - a.year || String(a.it.name).localeCompare(String(b.it.name)); });
+    return out;
+  }
+  function onThisDayHtml(rows) {
+    if (!rows || !rows.length) return '';
+    var body = rows.slice(0, 8).map(function (r) {
+      var ago = r.ago === 1 ? '1 year ago' : r.ago + ' years ago';
+      return '<button type="button" class="onDayRow" data-act="' + (S.kid ? 'kidItem' : 'item') + '" data-key="' + esc(r.it.key) + '">' +
+        thumbHtml(r.it) + '<span class="grow"><b>' + esc(r.it.name) + '</b><small>' + esc(r.kind) + ' \u00B7 ' + ago + ' (' + r.year + ')</small></span><span>\u203A</span></button>';
+    }).join('');
+    return '<div class="funCard onDayCard"><h2>On this day</h2><p class="funSub">From years gone by</p><div class="onDayList">' + body + '</div></div>';
+  }
+  function weekSummaryHtml(r) {
+    if (!r) return '';
+    var from = rwAddDaysLocal(londonDay(), -6);
+    function inWeek(iso, day) {
+      var d = String(day || (iso || '').slice(0, 10));
+      return d >= from;
+    }
+    var log = rwArr(r.log || r.recent);
+    var pts = 0, acts = { photo: 0, add: 0, found: 0, update: 0, job: 0, streak: 0 };
+    log.forEach(function (x) {
+      if (!inWeek(x.when, x.day)) return;
+      pts += Number(x.points) || 0;
+      if (acts[x.action] != null) acts[x.action]++;
+    });
+    var asks = rwArr(r.requests || r.pendingRequests).filter(function (q) { return inWeek(q.when); }).length;
+    var waiting = r.waiting || (r.queue ? r.queue.length : 0) || 0;
+    var lines = [
+      ['\uD83D\uDCF8 Photos approved', acts.photo],
+      ['\u2795 New items', acts.add],
+      ['\u2B50 Ticked off', acts.found],
+      ['\uD83E\uDDF9 Jobs done', acts.job],
+      ['\u2B50 Points earned', pts]
+    ];
+    return '<div class="funCard weekCard"><h2>Last 7 days</h2><p class="funSub">' + esc(KID_ROLE) + '\u2019s week</p><div class="weekGrid">' +
+      lines.map(function (l) { return '<div class="weekCell"><b>' + l[1] + '</b><small>' + l[0] + '</small></div>'; }).join('') +
+      '</div><p class="hint">' + (asks ? asks + ' reward ask' + (asks === 1 ? '' : 's') + ' in the last week. ' : '') +
+      (waiting ? waiting + ' photo' + (waiting === 1 ? '' : 's') + ' waiting for you.' : 'No photos waiting.') + '</p>' +
+      '<button type="button" class="btn main" data-act="go" data-to="rewards">Open rewards</button></div>';
+  }
+  function rwAddDaysLocal(day, k) {
+    var p = String(day || '').split('-');
+    var d = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2] + k));
+    return d.toISOString().slice(0, 10);
+  }
+  function paintHomeFun() {
+    var dayEl = $('homeOnThisDay') || $('kidOnThisDay');
+    var setEl = $('homeSetBars') || $('kidSetBars');
+    var weekEl = $('homeWeek');
+    if (dayEl) {
+      var paintDay = function (hist) {
+        try { dayEl.innerHTML = onThisDayHtml(onThisDayItems(hist)); if (typeof watchThumbs === 'function') watchThumbs(); } catch (e) { dayEl.innerHTML = ''; }
+      };
+      loadHistory().then(paintDay, function () { paintDay(null); });
+    }
+    if (setEl) loadChecklists().then(function (cls) { try { setEl.innerHTML = setBarsHtml(cls, 6); } catch (e) { setEl.innerHTML = ''; } }, noop);
+    if (weekEl && isPriv() && !S.kid) loadRewards(true).then(function (r) { try { weekEl.innerHTML = weekSummaryHtml(r); } catch (e) { weekEl.innerHTML = ''; } }, noop);
+  }
+  function wheelPool() {
+    var all = funOwned();
+    var prefer = all.filter(function (it) { return !it.posted; });
+    return prefer.length ? prefer : all;
+  }
+  SCREENS.wheel = function () {
+    loadBoot().then(function () {
+      var pool = wheelPool();
+      var h = backBtn() + '<h1>\uD83C\uDFA1 Spin the wheel</h1>' +
+        '<p class="hint">' + (pool.length ? 'Picks something we already own to film next. Prefers things not posted yet.' : 'Add some items first, then have a spin.') + '</p>' +
+        '<div class="wheelWrap"><div class="wheelPointer" aria-hidden="true"></div><div class="wheel" id="funWheel" aria-hidden="true"></div></div>' +
+        '<p class="center"><button type="button" class="btn main" data-act="wheelSpin" id="wheelBtn"' + (pool.length ? '' : ' disabled') + '>Spin</button></p>' +
+        '<div id="wheelOut"></div>';
+      setMain(h);
+      paintWheelFace(pool);
+    }).catch(oops);
+  }
+  function paintWheelFace(pool) {
+    var el = $('funWheel'); if (!el) return;
+    var n = Math.max(6, Math.min(12, (pool || []).length || 6));
+    var cols = ['#FED90F', '#70CCF5', '#F49AC2', '#7BD389', '#FFB347', '#C77DFF', '#E4572E', '#D8F1FC'];
+    var stops = [];
+    for (var i = 0; i < n; i++) stops.push(cols[i % cols.length] + ' ' + (i * 360 / n) + 'deg ' + ((i + 1) * 360 / n) + 'deg');
+    el.style.background = 'conic-gradient(' + stops.join(',') + ')';
+    el.style.transform = 'rotate(0deg)';
+    el.setAttribute('data-slices', String(n));
+  }
+  function spinTheWheel() {
+    var pool = wheelPool();
+    if (!pool.length) { toast('Nothing to film yet \u2014 add an item first.', 'oops'); return; }
+    var pick = pool[Math.floor(Math.random() * pool.length)];
+    var el = $('funWheel'), btn = $('wheelBtn'), out = $('wheelOut');
+    var slices = el ? (+el.getAttribute('data-slices') || 8) : 8;
+    var slice = Math.floor(Math.random() * slices);
+    var dest = 360 * (6 + Math.floor(Math.random() * 3)) + (360 - (slice * 360 / slices) - 360 / slices / 2);
+    if (btn) btn.disabled = true;
+    if (out) out.innerHTML = '<p class="hint">Spinning\u2026</p>';
+    var reduce = false;
+    try { reduce = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { reduce = false; }
+    var finish = function () {
+      if (btn) btn.disabled = false;
+      if (out) {
+        out.innerHTML = '<div class="funCard wheelResult" id="wheelResult">' + thumbHtml(pick) +
+          '<h2>' + esc(pick.name) + '</h2>' +
+          '<p class="hint">' + esc([pick.range, pick.series].filter(Boolean).join(' \u00B7 ') || 'Our pick to film next') +
+          (pick.posted ? '' : ' \u00B7 not posted yet') + '</p>' +
+          '<button type="button" class="btn main" data-act="' + (S.kid ? 'kidItem' : 'item') + '" data-key="' + esc(pick.key) + '">Open this item</button>' +
+          '<button type="button" class="btn" data-act="wheelSpin">Spin again</button></div>';
+        if (typeof watchThumbs === 'function') watchThumbs();
+        try { out.scrollIntoView({ block: 'start', behavior: 'smooth' }); } catch (e2) {}
+      }
+    };
+    if (!el || reduce) { finish(); return; }
+    el.style.transition = 'none';
+    el.style.transform = 'rotate(0deg)';
+    // force reflow
+    void el.offsetWidth;
+    el.style.transition = 'transform 3.2s cubic-bezier(0.12, 0.7, 0.2, 1)';
+    el.style.transform = 'rotate(' + dest + 'deg)';
+    setTimeout(finish, 3300);
+  }
+  SCREENS.swaps = function () {
+    busy('Looking for doubles\u2026');
+    Promise.all([call('getDuplicates', S.kid ? KID_ROLE : S.role), loadBoot().catch(function () { return null; })]).then(function (res) {
+      done();
+      var d = res[0] || { groups: [], forSale: [] };
+      var ok = function (it) { return !neverShow(it.name) && (!S.kid || kidSafe(it)); };
+      var groups = (d.groups || []).map(function (g) { return { name: g.name, copies: g.copies, items: (g.items || []).filter(ok) }; }).filter(function (g) { return g.items.length && !neverShow(g.name); });
+      var h = backBtn() + '<h1>\uD83D\uDD01 Doubles to swap</h1><p class="hint">Things we own more than once \u2014 handy if we want to swap. Tap a photo to open it.' + (S.kid ? '' : ' (For sale / values stay on Spares.)') + '</p>';
+      if (!groups.length) h += '<div class="nudge">No doubles found just now.</div>';
+      h += groups.map(function (g) {
+        return '<div class="card"><h3>' + esc(g.name) + ' <span class="pill">\u00D7' + g.copies + '</span></h3><div class="swapGrid">' +
+          g.items.map(function (it) {
+            return '<button type="button" class="swapTile" data-act="' + (S.kid ? 'kidItem' : 'item') + '" data-key="' + esc(it.key) + '">' +
+              thumbHtml(it) + '<b>' + esc(it.id || it.name) + '</b><small>' + esc([it.condition, it.status].filter(Boolean).join(' \u00B7 ')) + '</small></button>';
+          }).join('') + '</div></div>';
+      }).join('');
+      setMain(h);
+      watchThumbs();
+    }).catch(oops);
+  }
+  function paintHomeFunAndMiles() {
+    paintHomeFun();
+    checkMilestones();
+  }
+
 
   /* ---------------- Item history (timeline) ---------------- */
   SCREENS.history = function () {
@@ -4782,6 +5113,7 @@ SCREENS.who = function () {
     switch (a) {
       case 'back': layerBack(); break;
       case 'go': if (el.getAttribute('data-to') === 'guide') { go('guide', { i: 0 }); break; } go(el.getAttribute('data-to'), { tab: el.getAttribute('data-tab') }); break;
+      case 'wheelSpin': spinTheWheel(); break;
       case 'refresh': S.boot = null; thumbsRefresh(); go(S.screen, S.params, true); break;
       case 'thumbRetry': retryThumb(el.getAttribute('data-fid2')); break;
       case 'shareFind': shareFind(); break;
@@ -4913,7 +5245,7 @@ SCREENS.who = function () {
   });
   $('stuckBtn').addEventListener('click', function () {
     if (!S.kid) return showHelp();
-    sheet('How it works', '<ul><li>\uD83E\uDDF8 <b>Our stuff</b>: tap anything to see it big or add a photo.</li><li>\u2B50 <b>Hunt</b>: things we\u2019re looking for. Found one? Tap \u201CFound it!\u201D</li><li>\uD83D\uDCF7 <b>Scan</b>: point at a box\u2019s barcode to see if we\u2019ve got it.</li><li>\u2709\uFE0F <b>Letter from Dad</b>: how it all started. It pops up every now and then, and you can open it again any time.</li><li>\uD83D\uDCDD <b>Notes from Dad</b>: a little note every few visits, and all of them under Notes from Dad.</li><li>\uD83D\uDE04 <b>A daft joke</b>: a new one when you open this mode. Tap it for another.</li><li>\uD83C\uDF66 <b>What\u2019s our collection worth?</b>: swipe or tap to try ice creams, Dons tickets, tractors and lots more.</li><li>\u2B50 <b>My points</b>: earn points and ask Dad for rewards.</li><li>\uD83E\uDDF9 <b>Jobs</b>: jobs from Dad, like clean your room. He taps Done and you get the points.</li><li>No faces in photos - hands are fine.</li></ul>',
+    sheet('How it works', '<ul><li>\uD83E\uDDF8 <b>Our stuff</b>: tap anything to see it big or add a photo. Videos play right here in the app.</li><li>\uD83C\uDFA1 <b>Spin the wheel</b>: picks something we already own to film next (it prefers things not posted yet).</li><li>\uD83D\uDD01 <b>Doubles to swap</b>: things we have more than one of, with photos and no prices.</li><li>\u2705 <b>Set progress</b> and <b>On this day</b> show on Home when there is something to see.</li><li>\u2B50 <b>Hunt</b>: things we\u2019re looking for. Found one? Tap \u201CFound it!\u201D</li><li>\uD83D\uDCF7 <b>Scan</b>: point at a box\u2019s barcode to see if we\u2019ve got it.</li><li>\u2709\uFE0F <b>Letter from Dad</b>: how it all started. It pops up every now and then, and you can open it again any time.</li><li>\uD83D\uDCDD <b>Notes from Dad</b>: a little note every few visits, and all of them under Notes from Dad.</li><li>\uD83D\uDE04 <b>A daft joke</b>: a new one when you open this mode. Tap it for another.</li><li>\uD83C\uDF66 <b>What\u2019s our collection worth?</b>: swipe or tap to try ice creams, Dons tickets, tractors and lots more.</li><li>\u2B50 <b>My points</b>: earn points and ask Dad for rewards.</li><li>\uD83E\uDDF9 <b>Jobs</b>: jobs from Dad, like clean your room. He taps Done and you get the points.</li><li>No faces in photos - hands are fine.</li></ul>',
       [{ label: '\u21BB Refresh', value: 'refresh' }, { label: 'Got it!', value: 'ok', cls: 'main' }]).then(function (v) { if (v === 'refresh') { S.boot = null; thumbsRefresh(); go(S.screen || 'kid', S.params, true); } });
   });
   $('homeBtn').addEventListener('click', function () { if (S.kid) { S.history = []; go('kid', {}, true); return; } if (S.role) { S.history = []; go(S.screen === 'home' ? 'settings' : 'home', {}, true); } });
