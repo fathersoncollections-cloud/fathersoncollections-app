@@ -282,7 +282,7 @@
     return !KID_UNSAFE_RE.test(t);
   }
   /* Christmas presents hidden from Son until Dad says otherwise. By Item ID, so adding photos later does not reveal them. */
-  var KID_PRESENT_IDS = { 'FS-0417':1, 'FS-0416':1, 'FS-0415':1, 'FS-0414':1, 'FS-0413':1, 'FS-0312':1, 'FS-0278':1, 'FS-0276':1, 'FS-0275':1, 'FS-0269':1, 'FS-0268':1, 'FS-0266':1, 'FS-0208':1, 'FS-0207':1, 'FS-0104':1, 'FS-0097':1, 'FS-0088':1, 'FS-0066':1, 'FS-0065':1, 'FS-0062':1, 'FS-0027':1, 'FS-0026':1, 'FS-0025':1, 'FS-0016':1, 'FS-0003':1, 'FS-0002':1, 'FS-0001':1 };
+  var KID_PRESENT_IDS = { 'FS-0424':1, 'FS-0423':1, 'FS-0418':1, 'FS-0412':1, 'FS-0304':1, 'FS-0124':1, 'FS-0099':1, 'FS-0098':1 };
   function isKidPresent(it) {
     var id = String((it && it.id) || '').toUpperCase();
     return !!(id && KID_PRESENT_IDS[id]);
