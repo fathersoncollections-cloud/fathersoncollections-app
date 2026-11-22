@@ -2353,26 +2353,15 @@
   function funWorthHtml() {
     if (!S.kid) return '';
     if (funTotalNum() == null) return '';
-    var i = funUnitIndex(), n = FUN_UNITS.length;
     return '<div class="funWorth" id="funWorth">' +
       '<p class="funLabel">What\u2019s our collection worth?</p>' +
       '<div class="funViewport"><div class="funSlide">' + funSlideInner() + '</div></div>' +
-      '<div class="funNav">' +
-        '<button type="button" class="funArrow" data-act="funPrev" aria-label="Previous unit">\u2039</button>' +
-        '<span class="funCount" aria-live="polite">' + (i + 1) + ' / ' + n + '</span>' +
-        '<button type="button" class="funArrow" data-act="funNext" aria-label="Next unit">\u203A</button>' +
-      '</div>' +
       '<p class="funHint">Swipe or tap to try another</p></div>';
-  }
-  function paintFunCount() {
-    var el = document.querySelector('#funWorth .funCount');
-    if (el) el.textContent = (funUnitIndex() + 1) + ' / ' + FUN_UNITS.length;
   }
   var FUN_ANIM = { busy: false, ignoreTap: false };
   function paintFunWorth(dir) {
     var view = document.querySelector('#funWorth .funViewport');
     if (!view) return;
-    paintFunCount();
     var next = document.createElement('div');
     next.className = 'funSlide';
     next.innerHTML = funSlideInner();
