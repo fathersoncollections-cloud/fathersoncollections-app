@@ -1,0 +1,123 @@
+# Wanted/Hunt info-sheet reference pictures
+# Official or retailer product photos, stored locally and SW-cached.
+# Not our collection photos. Do not copy into the sheet or Drive.
+
+jakks-pacific__2-5in-wave-1__bart
+  official JAKKS Pacific product photo (bart-2-5-inch-figure)
+  https://www.jakks.com/wp-content/uploads/2024/07/Simpsons_MINI_SCALED_FIGS_8.webp
+
+jakks-pacific__2-5in-wave-1__homer
+  official JAKKS Pacific product photo (homer-2-5-inch-figure)
+  https://www.jakks.com/wp-content/uploads/2024/07/Simpsons_MINI_SCALED_FIGS_12.webp
+
+jakks-pacific__2-5in-wave-1__lisa
+  official JAKKS Pacific product photo (lisa-2-5-inch-figure)
+  https://www.jakks.com/wp-content/uploads/2024/07/Simpsons_MINI_SCALED_FIGS_16.webp
+
+jakks-pacific__2-5in-wave-3__grampa
+  official JAKKS Pacific product photo (grampa-simpson-2-5-inch-figure)
+  https://www.jakks.com/wp-content/uploads/2025/03/12.10.24_255634_176664-_Simpsons-2.5Scaled-Figs-Asst-W32409.webp
+
+jakks-pacific__2-5in-wave-3__milhouse
+  official JAKKS Pacific product photo (milhouse-with-squishy-drink-2-5-inch-figure)
+  https://www.jakks.com/wp-content/uploads/2025/03/12.10.24_255634_176664-_Simpsons-2.5Scaled-Figs-Asst-W32392.webp
+
+jakks-pacific__2-5in-wave-3__ralph
+  official JAKKS Pacific product photo (ralph-wiggum-with-valentine-card-2-5-inch-figure)
+  https://www.jakks.com/wp-content/uploads/2025/03/12.10.24_255634_176664-_Simpsons-2.5Scaled-Figs-Asst-W32404.webp
+
+jakks-pacific__2-5in-wave-4__principal-skinner
+  official JAKKS Pacific product photo (principal-skinner-2-5-inch-figure)
+  https://www.jakks.com/wp-content/uploads/2025/03/12.3.24_255258_196774_19678_19679_19680_19681_19682_The-Simpsons-2.5in-Scaled-Figs-Asst-W41821.webp
+
+jakks-pacific__2-5in-wave-4__selma-bouvier
+  official JAKKS Pacific product photo (selma-bouvier-2-5-inch-figure)
+  https://www.jakks.com/wp-content/uploads/2025/03/12.3.24_255258_196774_19678_19679_19680_19681_19682_The-Simpsons-2.5in-Scaled-Figs-Asst-W41799.webp
+
+jakks-pacific__2-5in-playset__simpsons-living-room-diorama-with-homer
+  official JAKKS Pacific product photo (living-room-diorama)
+  https://www.jakks.com/wp-content/uploads/2024/07/LIVING-ROOM-DIORAMA_5.webp
+
+jakks-pacific__5in-wave-3__homer-at-the-bat
+  official JAKKS Pacific product photo (homer-with-baseball-bat-and-cap-5-inch-action-figure)
+  https://www.jakks.com/wp-content/uploads/2025/03/11.13.24_254350_196834_SMPSNS_The-Simpsons-5-Inch-Figs-Wave-30650.webp
+
+jakks-pacific__5in-wave-3__marge-with-maggie
+  official JAKKS Pacific product photo (marge-with-maggie-5-75-inch-action-figure)
+  https://www.jakks.com/wp-content/uploads/2025/03/11.13.24_254350_196834_SMPSNS_The-Simpsons-5-Inch-Figs-Wave-30678.webp
+
+jakks-pacific__5in-wave-3__milhouse-with-bicycle
+  official JAKKS Pacific product photo (milhouse-with-bicycle-3-5-inch-action-figure)
+  https://www.jakks.com/wp-content/uploads/2025/03/11.13.24_254350_196834_SMPSNS_The-Simpsons-5-Inch-Figs-Wave-30658.webp
+
+jakks-pacific__5in-wave-4__bart-with-skateboard-blue-shirt
+  official JAKKS Pacific product photo (bart-with-skateboard-3-75-inch-action-figure)
+  https://www.jakks.com/wp-content/uploads/2025/03/1.21.25_257371_196884_Simposons-5-in-Wave-40052.webp
+
+jakks-pacific__5in-wave-5__bart-hockey
+  official JAKKS Pacific product photo (hockey-bart-with-hockey-stick-puck-5-inch-action-figure)
+  https://www.jakks.com/wp-content/uploads/2025/09/7263180.webp
+
+jakks-pacific__5in-wave-5__troy-mcclure
+  official JAKKS Pacific product photo (troy-mcclure-with-juice-loosener-breath-freshener-5-inch-action-figure)
+  https://www.jakks.com/wp-content/uploads/2025/09/7263181.webp
+
+jakks-pacific__5in-premium__the-chosen-one-homer
+  official JAKKS Pacific product photo (homer-the-chosen-one-5-inch-figure)
+  https://www.jakks.com/wp-content/uploads/2026/10/HERO-IMAGE-433524_5L_433524_The_Simpsons_Homer__The_Chosen_One__5-Inch_Figure_THE_SIMPSONS_BOYS_2026_11.jpg
+
+jakks-pacific__5in-premium__king-size-homer
+  official JAKKS Pacific product photo (king-size-homer-5-inch-figure)
+  https://www.jakks.com/wp-content/uploads/2026/10/HERO-IMAGE-196894_5L_196894_The_Simpsons_5__King-Size_Homer_THE_SIMPSONS_BOYS_2026_4.jpg
+
+jakks-pacific__5in-premium__fat-tony
+  official JAKKS Pacific product photo (fat-tony-5-inch-figure)
+  https://www.jakks.com/wp-content/uploads/2026/10/HERO-IMAGE-276204_5L_276204_The_Simpsons_Fat_Tony_5-Inch_Figure_Solid_THE_SIMPSONS_BOYS_2026_9.jpg
+
+jakks-pacific__5in-premium-treehouse-of-horror__king-homer
+  official JAKKS Pacific product photo (king-homer-premium-action-figure)
+  https://www.jakks.com/wp-content/uploads/2025/07/6.5.25_SMPSNS_196954_Homer8268.webp
+
+jakks-pacific__5in-premium-treehouse-of-horror__fly-boy-bart
+  official JAKKS Pacific product photo (fly-boy-bart-premium-action-figure)
+  https://www.jakks.com/wp-content/uploads/2025/07/6.19.25_SMPSNS_196944_Fly-Boy-Bart8952.webp
+
+jakks-pacific__5in-premium-treehouse-of-horror__grim-reaper-homer
+  official JAKKS Pacific product photo (grim-reaper-homer-deluxe-5-inch-figure)
+  https://www.jakks.com/wp-content/uploads/2026/10/HERO-IMAGE-433374_5L_433374_The_Simpsons_THOH_Grim_Reaper_Homer_Simpson_Deluxe_5_Figure_THE_SIMPSONS_BOYS_2026_8.jpg
+
+jakks-pacific__5in-premium-treehouse-of-horror__vampire-krusty
+  official JAKKS Pacific product photo (vampire-krusty-the-clown-deluxe-5-inch-figure)
+  https://www.jakks.com/wp-content/uploads/2026/10/HERO-IMAGE-433384_5L_433384_The_Simpsons_THOH_Vampire_Krusty_the_Clown_Deluxe_5_Figure_THE_SIMPSONS_BOYS_2026_5.jpg
+
+jakks-pacific__5in-premium-treehouse-of-horror__werewolf-ned-flanders
+  official JAKKS Pacific product photo (werewolf-ned-flanders-deluxe-5-inch-figure)
+  https://www.jakks.com/wp-content/uploads/2026/10/HERO-IMAGE-433364_5L_433364_The_Simpsons_THOH_Werewolf_Ned_Flanders_Deluxe_5_Figure_THE_SIMPSONS_BOYS_2026_7.jpg
+
+jakks-pacific__2-5in-wave-2__itchy
+  Not Just Toyz retailer photo of JAKKS Pacific The Simpsons Wave 2 Itchy 2.5" figure
+  https://www.notjusttoyz.com/the-simpsons-wave-2-itchy-2-5-figure/
+
+jakks-pacific__2-5in-wave-2__scratchy
+  Not Just Toyz retailer photo of JAKKS Pacific The Simpsons Wave 2 Scratchy 2.5" figure
+  https://www.notjusttoyz.com/the-simpsons-wave-2-scratchy-2-5-figure/
+
+lego__71016__kwik-e-mart
+  Brickset official set photo for LEGO 71016 The Simpsons Kwik-E-Mart
+  https://images.brickset.com/sets/images/71016-1.jpg
+
+lego__41632__brickheadz-homer-simpson-krusty-the-clown
+  Brickset official set photo for LEGO 41632 BrickHeadz Homer Simpson & Krusty the Clown
+  https://images.brickset.com/sets/images/41632-1.jpg
+
+lego__71202__lego-dimensions-level-pack-the-simpsons-homer
+  Brickset official set photo for LEGO Dimensions 71202 Level Pack (Homer)
+  https://images.brickset.com/sets/images/71202-1.jpg
+
+lego__71211__lego-dimensions-fun-pack-bart
+  Brickset official set photo for LEGO Dimensions 71211 Fun Pack Bart
+  https://images.brickset.com/sets/images/71211-1.jpg
+
+lego__71227__lego-dimensions-fun-pack-krusty
+  Brickset official set photo for LEGO Dimensions 71227 Fun Pack Krusty
+  https://images.brickset.com/sets/images/71227-1.jpg

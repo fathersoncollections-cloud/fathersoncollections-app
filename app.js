@@ -587,12 +587,17 @@
     (wanted || []).forEach(function (w) {
       out.push(w);
       var k = norm(w.name);
-      if (k) seen[k] = 1;
+      if (k) seen[k] = out.length - 1;
     });
     missingToWanted(missing).forEach(function (w) {
       var k = norm(w.name);
-      if (k && seen[k]) return;
-      if (k) seen[k] = 1;
+      if (k && seen[k] !== undefined) {
+        var cur = out[seen[k]];
+        if (cur && !cur.year && w.year) cur.year = w.year;
+        if (cur && !cur.series && w.series) cur.series = w.series;
+        return;
+      }
+      if (k) seen[k] = out.length;
       out.push(w);
     });
     return out;
@@ -779,6 +784,7 @@
   }
   /* v7l: local reference pictures for items with no Drive folder. Real photos always win. */
   var STANDIN_IDS = {"FS-0066":1, "FS-0098":1, "FS-0124":1, "FS-0276":1, "FS-0304":1, "FS-0312":1, "FS-0412":1, "FS-0415":1, "FS-0417":1, "FS-0418":1, "FS-0423":1, "FS-0424":1};
+  var WANT_REF_IDS = {"jakks-pacific__2-5in-playset__simpsons-living-room-diorama-with-homer":1, "jakks-pacific__2-5in-wave-1__bart":1, "jakks-pacific__2-5in-wave-1__homer":1, "jakks-pacific__2-5in-wave-1__lisa":1, "jakks-pacific__2-5in-wave-2__itchy":1, "jakks-pacific__2-5in-wave-2__scratchy":1, "jakks-pacific__2-5in-wave-3__grampa":1, "jakks-pacific__2-5in-wave-3__milhouse":1, "jakks-pacific__2-5in-wave-3__ralph":1, "jakks-pacific__2-5in-wave-4__principal-skinner":1, "jakks-pacific__2-5in-wave-4__selma-bouvier":1, "jakks-pacific__5in-premium-treehouse-of-horror__fly-boy-bart":1, "jakks-pacific__5in-premium-treehouse-of-horror__grim-reaper-homer":1, "jakks-pacific__5in-premium-treehouse-of-horror__king-homer":1, "jakks-pacific__5in-premium-treehouse-of-horror__vampire-krusty":1, "jakks-pacific__5in-premium-treehouse-of-horror__werewolf-ned-flanders":1, "jakks-pacific__5in-premium__fat-tony":1, "jakks-pacific__5in-premium__king-size-homer":1, "jakks-pacific__5in-premium__the-chosen-one-homer":1, "jakks-pacific__5in-wave-3__homer-at-the-bat":1, "jakks-pacific__5in-wave-3__marge-with-maggie":1, "jakks-pacific__5in-wave-3__milhouse-with-bicycle":1, "jakks-pacific__5in-wave-4__bart-with-skateboard-blue-shirt":1, "jakks-pacific__5in-wave-5__bart-hockey":1, "jakks-pacific__5in-wave-5__troy-mcclure":1, "lego__41632__brickheadz-homer-simpson-krusty-the-clown":1, "lego__71016__kwik-e-mart":1, "lego__71202__lego-dimensions-level-pack-the-simpsons-homer":1, "lego__71211__lego-dimensions-fun-pack-bart":1, "lego__71227__lego-dimensions-fun-pack-krusty":1};
   function standinUrl(it) {
     var id = it && it.id;
     if (!id || !STANDIN_IDS[id] || it.folderId) return '';
@@ -1177,7 +1183,9 @@
         funWorthHtml() +
         '<div class="kfeatures">' +
         '<button type="button" class="kfeature pinkL" data-act="go" data-to="kidBadges"><span>\uD83C\uDFC6</span><span class="kfeatTxt"><b>My badges</b><small id="kidBadgeN">see what you\u2019ve earned</small></span></button>' +
+        '<div id="kidMissions"></div>' +
         '<button type="button" class="kfeature yel" data-act="go" data-to="kidRewards"><span>\u2B50</span><span class="kfeatTxt"><b>My points</b><small id="kidPtsN">earn rewards!</small></span></button>' +
+        '<div id="kidEarn"></div>' +
         '</div>' +
         '<div class="ownCard card"><label class="ownLabel" for="kidSearch">\uD83D\uDD0D Have we got it?</label><input id="kidSearch" class="ownInput" type="search" placeholder="Type a name\u2026" autocomplete="off"><div id="kidOwnOut"></div></div>' +
         '<div class="kgrid">' +
@@ -1191,9 +1199,9 @@
         '<div class="center" style="margin-top:18px"><button class="btn small" data-act="kidExit">\uD83D\uDD13 Grown-ups: full app</button></div>';
       setMain(h);
       bindOwnSearch('kidSearch', 'kidOwnOut');
-      checkNewBadges().then(function (B) { var n = B.filter(function (b) { return b.got; }).length; if ($('kidBadgeN')) $('kidBadgeN').textContent = n + ' badge' + (n === 1 ? '' : 's') + ' so far!'; }).catch(noop);
+      checkNewBadges().then(function (B) { var n = B.filter(function (b) { return b.got; }).length; if ($('kidBadgeN')) $('kidBadgeN').textContent = n + ' badge' + (n === 1 ? '' : 's') + ' so far!'; paintMissions(B); }).catch(noop);
       loadHomeWanted().then(function (w) { var n = w.filter(function (x) { return kidSafe(x); }).length; if ($('kidHuntN')) $('kidHuntN').textContent = n + ' to find!'; });
-      loadRewards().then(function (r) { if ($('kidPtsN') && r) $('kidPtsN').textContent = r.balance + ' points \u00B7 ' + r.level.name; }).catch(noop);
+      loadRewards().then(function (r) { if ($('kidPtsN') && r) $('kidPtsN').textContent = r.balance + ' points \u00B7 ' + r.level.name; paintEarnPoints(r); }).catch(noop);
       recordBadgeVisit();
       maybeShowLetter();
       bindFunSwipe();
@@ -2560,10 +2568,10 @@
       }).join('') + '</div>' : '';
       setMain(backBtn() + '<h1>\u2B50 My points</h1>' + rwLevelCard(r) +
         (function () {
-        var p = (r && r.points) || {};
-        var photo = p.photo != null ? p.photo : 10, tick = p.found != null ? p.found : 5, neu = p.add != null ? p.add : 20;
-        return (r.waiting ? '<div class="nudge">Dad is having a look at ' + r.waiting + ' photo' + (r.waiting === 1 ? '' : 's') + '. You get ' + photo + ' points for each one he says yes to.</div>' : '') +
-        '<h2>Rewards you can ask for</h2><p class="hint">Photos (when Dad says yes) are ' + photo + ' points, ticks are ' + tick + ', and a brand new item is ' + neu + '. Help 3 days in a row for a bonus.</p><div class="rwList">';
+        var photo = ptsVal(r, 'photo', 10);
+        return (r.waiting ? '<div class="nudge">Dad is having a look at ' + r.waiting + ' photo' + (r.waiting === 1 ? '' : 's') + '. You get ' + photo + ' point' + (photo === 1 ? '' : 's') + ' for each one he says yes to.</div>' : '') +
+        earnCardHtml(r) +
+        '<h2>Rewards you can ask for</h2><div class="rwList">';
       })() +
         (rewards || '<p class="hint">Dad hasn\u2019t set any rewards yet.</p>') + '</div>' + reqs + recent);
     }).catch(function (e) { done(); setMain(backBtn() + '<h1>\u2B50 My points</h1>' + rwNeedOk()); });
@@ -3574,70 +3582,39 @@ SCREENS.who = function () {
     if ($('wantCount')) $('wantCount').textContent = q ? shown + ' of ' + total + ' match \u201C' + qRaw + '\u201D.' : total + ' on the hunt list. Got one? Tap \u201CGot it\u201D.';
   }
   function wantedSearchQuery(w) {
-    return [w && w.name, w && w.range, w && w.series].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+    return [w && w.name, w && w.range, w && w.series, w && w.year].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
   }
   function ebayWantedUrl(w) {
     return 'https://www.ebay.co.uk/sch/i.html?_nkw=' + encodeURIComponent(wantedSearchQuery(w));
   }
-  var REF_PIC_MEM = {};
-  function refPicQuery(w) {
-    var n = String((w && w.name) || '');
-    n = n.replace(/\((?:sealed|carded|loose)[^)]*\)/ig, '');
-    n = n.replace(/\b(?:funko|pop!|pop|figure|figurine|exclusive)\b/ig, '');
-    n = n.replace(/\s+/g, ' ').trim();
-    if (n && !/simpsons/i.test(n)) n += ' The Simpsons';
-    return n;
+  function wantRefSlug(w) {
+    var bit = function (s) {
+      return norm(s).replace(/#/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'x';
+    };
+    return bit(w && w.range) + '__' + bit(w && w.series) + '__' + bit(w && w.name);
   }
-  function rememberRefPic(key, url) {
-    REF_PIC_MEM[key] = url || '';
-    try {
-      var o = JSON.parse(LS.get('wantRefPic') || '{}');
-      o[key] = url || '';
-      var keys = Object.keys(o);
-      if (keys.length > 80) keys.slice(0, keys.length - 80).forEach(function (k) { delete o[k]; });
-      LS.set('wantRefPic', JSON.stringify(o));
-    } catch (e) {}
-    return url || '';
-  }
-  function wikiApiPics(api, q) {
-    var url = api + '?action=query&format=json&origin=*&prop=pageimages&piprop=thumbnail&pithumbsize=400&generator=search&gsrlimit=5&gsrsearch=' + encodeURIComponent(q);
-    return fetch(url).then(function (r) { return r.ok ? r.json() : {}; }).then(function (data) {
-      var pages = (data && data.query && data.query.pages) || {}, best = '';
-      Object.keys(pages).forEach(function (id) {
-        var t = pages[id] && pages[id].thumbnail && pages[id].thumbnail.source;
-        if (t && /^https:\/\//.test(t) && !best) best = t;
-      });
-      return best;
-    }).catch(function () { return ''; });
+  function wantRefUrl(w) {
+    var id = wantRefSlug(w);
+    if (WANT_REF_IDS && WANT_REF_IDS[id]) return './assets/refs/' + id + '.webp';
+    return '';
   }
   function findRefPic(w) {
-    var key = wantedSearchQuery(w);
-    if (REF_PIC_MEM[key] !== undefined) return Promise.resolve(REF_PIC_MEM[key]);
-    try {
-      var cached = JSON.parse(LS.get('wantRefPic') || '{}');
-      if (typeof cached[key] === 'string') { REF_PIC_MEM[key] = cached[key]; return Promise.resolve(cached[key]); }
-    } catch (e) {}
-    var q = refPicQuery(w);
-    return wikiApiPics('https://en.wikipedia.org/w/api.php', q).then(function (url) {
-      if (url) return rememberRefPic(key, url);
-      return wikiApiPics('https://simpsons.fandom.com/api.php', q).then(function (url2) { return rememberRefPic(key, url2 || ''); });
-    }).catch(function () { return rememberRefPic(key, ''); });
+    return Promise.resolve(wantRefUrl(w) || '');
   }
   function wantedInfoSheet(i, list) {
     var w = (list || [])[i]; if (!w) return;
     var ebay = ebayWantedUrl(w);
+    var url = wantRefUrl(w);
+    var pic = url
+      ? '<img alt="" src="' + esc(url) + '">'
+      : '<img class="wantRefPlaceholder" alt="No reference picture yet" src="./assets/refs/_placeholder.webp">';
     sheet(w.name, '<div class="wantInfo">' +
-      '<div class="wantRef" id="wantRef"><div class="wantRefPh">Looking for a reference picture\u2026</div></div>' +
+      '<div class="wantRef" id="wantRef">' + pic + '</div>' +
       '<p class="wantRefLab">Reference picture</p>' +
       '<p class="hint">This is just to help us recognise it \u2014 it is not one of our photos, and we never save it as one.</p>' +
       '<a class="btn full main" href="' + esc(ebay) + '" target="_blank" rel="noopener">Search on eBay UK \u2197</a>' +
       '</div>',
       [{ label: 'Close', value: false }]);
-    findRefPic(w).then(function (url) {
-      var box = $('wantRef'); if (!box) return;
-      if (url) box.innerHTML = '<img alt="" src="' + esc(url) + '" referrerpolicy="no-referrer">';
-      else box.innerHTML = '<div class="wantRefPh">No reference picture just now \u2014 you can still hunt by name on eBay.</div>';
-    });
   }
 
   /* ---- Wanted + checklists ---- */
@@ -4324,10 +4301,116 @@ SCREENS.who = function () {
       if (book.override && book.override[def.id] === 0) got = false;
       else if (book.override && book.override[def.id] === 1) got = true;
       if (got) have = need;
-      return { id: def.id, icon: def.emoji, name: def.name, desc: def.goal, tier: def.tier || 'bronze', have: have, need: need, got: got, custom: !!def.custom };
+      return { id: def.id, icon: def.emoji, name: def.name, desc: def.goal, tier: def.tier || 'bronze', have: have, need: need, got: got, custom: !!def.custom, rule: typ };
     });
   }
   function badgesSeen() { try { return JSON.parse(LS.get('kidBadgesSeen') || 'null'); } catch (e) { return null; } }
+  function ptsVal(r, key, fallback) {
+    var n = parseInt(((r && r.points) || {})[key], 10);
+    return (n >= 0 && n <= 100000) ? n : fallback;
+  }
+  function ptsLabel(n) { return n === 1 ? '1 pt' : n + ' pts'; }
+  function earnJobs(r) {
+    return [
+      { kind: 'photo', icon: '\uD83D\uDCF8', title: 'Add a photo', pts: ptsVal(r, 'photo', 10), desc: 'Snap one of our things. You get the points when Dad says yes.' },
+      { kind: 'add', icon: '\uD83D\uDCE6', title: 'Add a new find', pts: ptsVal(r, 'add', 20), desc: 'Save something new to our collection.' },
+      { kind: 'found', icon: '\u2B50', title: 'Tick one off the Hunt', pts: ptsVal(r, 'found', 5), desc: 'Found it on Hunt or Wanted? Mark it ours.' },
+      { kind: 'update', icon: '\u270F\uFE0F', title: 'Update a thing', pts: ptsVal(r, 'update', 5), desc: 'Help fill in details on something we already have.' },
+      { kind: 'streak', icon: '\uD83D\uDD25', title: '3-day helper bonus', pts: ptsVal(r, 'streak', 15), desc: 'Help on 3 days in a row and get a bonus on top.' }
+    ];
+  }
+  function earnCardHtml(r) {
+    var h = '<div class="earnCard"><h2>How to earn points</h2><p class="earnSub">Your point jobs \u2014 tap one to have a go</p><div class="earnJobs">';
+    earnJobs(r).forEach(function (j) {
+      h += '<button type="button" class="earnJob" data-act="earnGo" data-kind="' + esc(j.kind) + '">' +
+        '<span class="eIc">' + j.icon + '</span>' +
+        '<span class="eTxt"><b>' + esc(j.title) + '</b><small>' + esc(j.desc) + '</small></span>' +
+        '<span class="ePts">' + ptsLabel(j.pts) + '</span></button>';
+    });
+    return h + '</div></div>';
+  }
+  function paintEarnPoints(r) {
+    var el = $('kidEarn'); if (!el) return;
+    el.innerHTML = earnCardHtml(r || RW || {});
+  }
+  function runEarnJob(kind) {
+    if (kind === 'photo' || kind === 'update') go('kidStuff');
+    else if (kind === 'add') { S.add = null; go('add'); }
+    else if (kind === 'found') go('kidHunt');
+    else if (kind === 'streak') toast('Help today with a photo, a find or a new item to keep your streak going!', 'good');
+    else go('kidRewards');
+  }
+  function missionAction(b) {
+    var left = Math.max(1, (b.need || 1) - (b.have || 0));
+    var typ = b.rule || '';
+    if (typ === 'photos') return left === 1 ? 'Add 1 more photo' : 'Add ' + left + ' more photos';
+    if (typ === 'found') return left === 1 ? 'Find 1 item from Hunt' : 'Find ' + left + ' items from Hunt';
+    if (typ === 'points') return left === 1 ? 'Earn 1 more point' : 'Earn ' + left + ' more points';
+    if (typ === 'visits') return left === 1 ? 'Come back tomorrow' : 'Visit on ' + left + ' more days';
+    if (typ === 'items') return left === 1 ? 'Add 1 new item' : 'Add ' + left + ' new items';
+    if (typ === 'cats') return left === 1 ? 'Add an item in 1 more category' : 'Add items in ' + left + ' more categories';
+    if (typ === 'jokes') return left === 1 ? 'Tap the joke 1 more time' : 'Tap the joke ' + left + ' more times';
+    if (typ === 'swipes') return 'Swipe or tap the worth card';
+    if (typ === 'reads') return 'Open a note or the letter from Dad';
+    if (typ === 'searches') return 'Search for something on the home screen';
+    if (typ === 'scans') return 'Scan a box';
+    return b.desc || 'Have a go at this badge';
+  }
+  function nearestMissions(B, n) {
+    n = n || 4;
+    var open = (B || []).filter(function (b) { return !b.got && b.rule && b.rule !== 'starter' && b.rule !== 'manual'; });
+    open.sort(function (a, b) {
+      var pa = a.need ? a.have / a.need : 0, pb = b.need ? b.have / b.need : 0;
+      if (pb !== pa) return pb - pa;
+      var ra = a.need - a.have, rb = b.need - b.have;
+      if (ra !== rb) return ra - rb;
+      var ta = BADGE_TIER_ORDER.indexOf(a.tier), tb = BADGE_TIER_ORDER.indexOf(b.tier);
+      if (ta !== tb) return ta - tb;
+      return 0;
+    });
+    return open.slice(0, n);
+  }
+  function missionCardHtml(B) {
+    var rows = nearestMissions(B, 4);
+    if (!rows.length) {
+      return '<div class="missionCard"><h2>My missions</h2><p class="missionSub">You\u2019ve smashed every quest for now \u2014 check your badge wall!</p>' +
+        '<button type="button" class="missionRow tier-gold" data-act="go" data-to="kidBadges"><span class="mIc">\uD83C\uDFC6</span><span class="mTxt"><b>See my badges</b><small>All current missions complete</small></span></button></div>';
+    }
+    var h = '<div class="missionCard"><h2>My missions</h2><p class="missionSub">Your next badge quests \u2014 tap one to get started</p>';
+    rows.forEach(function (b) {
+      var pct = b.need ? Math.round(100 * b.have / b.need) : 0;
+      h += '<button type="button" class="missionRow tier-' + esc(b.tier || 'bronze') + '" data-act="mission" data-kind="' + esc(b.rule || '') + '">' +
+        '<span class="mIc">' + (b.icon || '\uD83C\uDFC6') + '</span>' +
+        '<span class="mTxt"><b>' + esc(b.name) + '</b><small>' + esc(missionAction(b)) + '</small>' +
+        '<span class="mBar"><i style="width:' + pct + '%"></i></span></span>' +
+        '<span class="mCount"><span class="tPip ' + esc(b.tier || 'bronze') + '"></span> ' + b.have + ' / ' + b.need + '</span>' +
+        '</button>';
+    });
+    return h + '</div>';
+  }
+  function paintMissions(B) {
+    var el = $('kidMissions'); if (!el) return;
+    el.innerHTML = missionCardHtml(B || S.badges || []);
+  }
+  function runMission(kind) {
+    if (kind === 'photos') go('kidStuff');
+    else if (kind === 'found') go('kidHunt');
+    else if (kind === 'points') go('kidRewards');
+    else if (kind === 'items' || kind === 'cats') { S.add = null; go('add'); }
+    else if (kind === 'scans') openScanner({});
+    else if (kind === 'reads') showDadLetter(true);
+    else if (kind === 'visits') toast('Come back tomorrow and this one will tick along!', 'good');
+    else if (kind === 'jokes') {
+      var j = $('kidJoke');
+      if (j) { try { j.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {} j.classList.add('missionPulse'); setTimeout(function () { j.classList.remove('missionPulse'); }, 1600); }
+    } else if (kind === 'swipes') {
+      var w = $('funWorth');
+      if (w) { try { w.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {} w.classList.add('missionPulse'); setTimeout(function () { w.classList.remove('missionPulse'); }, 1600); }
+    } else if (kind === 'searches') {
+      var s = $('kidSearch');
+      if (s) { try { s.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {} s.focus(); s.classList.add('missionPulse'); setTimeout(function () { s.classList.remove('missionPulse'); }, 1600); }
+    } else go('kidBadges');
+  }
   function checkNewBadges() {
     return Promise.all([
       loadHistory().catch(function () { return null; }),
@@ -4665,6 +4748,8 @@ SCREENS.who = function () {
       case 'kidSnap': if (S.current) openCamera({ key: S.current.key, name: S.current.name }); break;
       case 'kidGot': kidGot(+el.getAttribute('data-i')); break;
       case 'kidNew': S.add = null; go('add'); break;
+      case 'mission': runMission(el.getAttribute('data-kind') || ''); break;
+      case 'earnGo': runEarnJob(el.getAttribute('data-kind') || ''); break;
       case 'kidGotItem':
         confirmSheet('We got it? \uD83C\uDF89', 'Mark <b>' + esc(S.current.name) + '</b> as ours?', 'Yes!', 'Not yet').then(function (ok) {
           if (!ok) return; busy('Saving\u2026');
