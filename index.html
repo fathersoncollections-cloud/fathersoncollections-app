@@ -789,6 +789,43 @@
   .waysCard .jobRows, .waysCard .earnJobs { gap: 6px; }
   .waysCard .jobRow, .waysCard .earnJob { padding: 7px 9px; }
   .waysCard .waysOpen { margin: 8px 0 2px; }
+  .filmCard {
+    background: linear-gradient(180deg, #FFF4B8, #FFD24D);
+    border: 3px solid var(--ink);
+    border-radius: 20px;
+    padding: 12px 12px 10px;
+    color: var(--ink);
+    box-shadow: 0 5px 0 #C48A00;
+    text-align: left;
+    margin-top: 10px;
+  }
+  .filmCard h2, .kstuffFilm h2, .kstuffGot {
+    font-family: "Luckiest Guy", system-ui, sans-serif;
+    color: #13294B;
+    font-size: 24px;
+    line-height: 1.05;
+    margin: 0 0 8px;
+    letter-spacing: .02em;
+    font-weight: 400;
+  }
+  .kstuffFilm { margin: 0 0 18px; }
+  .kstuffGot { margin: 8px 0 10px; }
+  .filmRows { display: flex; flex-direction: column; gap: 6px; }
+  .filmRow {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    background: var(--white); border: 3px solid var(--ink); border-radius: 16px;
+    padding: 6px 8px; text-align: left; color: inherit; font-family: inherit;
+    box-shadow: 0 3px 0 var(--ink); cursor: pointer; -webkit-appearance: none; appearance: none;
+  }
+  .filmRow:active { transform: translateY(1px); box-shadow: 0 2px 0 var(--ink); }
+  .filmRow .thumb { width: 56px; height: 56px; flex: 0 0 56px; border-radius: 12px; border: 3px solid var(--ink); overflow: hidden; position: relative; }
+  .filmTxt { flex: 1; min-width: 0; }
+  .filmTxt b { display: block; font-size: 16px; font-weight: 900; line-height: 1.15; }
+  .filmTxt small { display: block; font-size: 12px; font-weight: 700; opacity: .8; line-height: 1.25; }
+  .filmRow .filmBadge { font-size: 7px; padding: 1px 4px 1px 2px; right: 2px; bottom: 2px; }
+  .filmRow .filmBadge img { width: 10px; height: 10px; }
+  .filmCard .waysOpen { margin: 8px 0 2px; }
+  .isDadHome .filmCard h2 { color: #13294B; }
   .ptsEmojiRow { align-items: flex-end; gap: 8px; }
   .ptsEmojiField { flex: 0 0 88px; max-width: 88px; }
   .ptsEmojiField input { text-align: center; font-size: 22px; padding: 6px 4px; }
@@ -1414,7 +1451,7 @@
   (function () {
     'use strict';
     var API = "https://script.google.com/macros/s/AKfycbwSO6lF3RuWl0oihI0plwrpb2UKTVDG699nbfXpsiD9y-ZIlRxf44L4SZgw7whRzpeF/exec";
-    var VER = "v7y-20261122";
+    var VER = "v7z-20261122";
     // Plain fetch with no cookies, so Google's multi-account sign-in never gets involved.
     function post(fn, args) {
       return fetch(API, {

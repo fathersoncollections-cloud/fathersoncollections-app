@@ -271,11 +271,15 @@
   /* Hidden from Son (same list as the server's HIDE_FROM_SON) */
   var SON_HIDE_RE = /\b(playboy|nude|naked|nudie|topless|xxx|adults? only|over 18s)\b/i;
   function sonHidden(name) { return SON_HIDE_RE.test(String(name || '')); }
-  /* Son's mode also leaves out anything Christmassy or gift-related, to be safe */
+  /* Son's mode also leaves out anything Christmassy or gift-related, to be safe.
+     Word boundaries so "Santa Cruz" / "Secrets" etc. are not caught; known titles are allow-listed. */
+  var KID_SAFE_ALLOW_RE = /santa['\u2019]?s\s+little\s+helper|santa\s+cruz|gift\s+of\s+the\s+maggie|gift\s+with\s+purchase|mathematical\s+secrets/ig;
+  var KID_UNSAFE_RE = /\bchristmas\b|\bxmas\b|\bx-mas\b|\bsecrets?\b|\bgifts?\b|\bpresents?\b|\bsanta\b/i;
+  function kidSafeText(s) { return String(s || '').replace(KID_SAFE_ALLOW_RE, ' '); }
   function kidSafe(it) {
     if (!it || neverShow(it.name) || sonHidden(it.name)) return false;
-    var t = [it.name, it.range, it.series].join(' ');
-    return !/christmas|xmas|x-mas|secret|gift|present|santa/i.test(t);
+    var t = kidSafeText([it.name, it.range, it.series].join(' '));
+    return !KID_UNSAFE_RE.test(t);
   }
 
   /* ================= v4: fuzzy "Do I own it?" ================= */
@@ -1358,6 +1362,7 @@
         funWorthHtml() +
         '<div id="kidRewardsHome"></div>' +
         '<div id="kidWays"></div>' +
+        '<div id="kidFilm"></div>' +
         '<div class="kfeatures">' +
         '<button type="button" class="kfeature pinkL" data-act="go" data-to="kidBadges"><span>\uD83C\uDFC6</span><span class="kfeatTxt"><b>My badges</b><small id="kidBadgeN">see what you\u2019ve earned</small></span></button>' +
         '<div id="kidMissions"></div>' +
@@ -1377,6 +1382,7 @@
         '</div>' +
         '<div class="center" style="margin-top:18px"><button class="btn small" data-act="kidExit">\uD83D\uDD13 Grown-ups: full app</button></div>';
       setMain(h);
+      try { paintStillToFilm(); } catch (eF) {}
       bindOwnSearch('kidSearch', 'kidOwnOut');
       paintHomeFunAndMiles();
       checkNewBadges().then(function (B) { var n = B.filter(function (b) { return b.got; }).length; if ($('kidBadgeN')) $('kidBadgeN').textContent = n + ' badge' + (n === 1 ? '' : 's') + ' so far!'; paintMissions(B); }).catch(noop);
@@ -1393,10 +1399,24 @@
       var h = '<h1>\uD83E\uDDF8 Our stuff</h1><div class="search"><input id="kidQ" type="search" class="ownInput" placeholder="\uD83D\uDD0D Find something\u2026" value="' + esc(q) + '" autocomplete="off"></div><div id="kidGrid"></div>';
       setMain(h);
       var draw = function () {
-        var list = q ? fuzzyFind(q, all, 60).map(function (x) { return x.it; }) : all.filter(function (it) { return it.folderId; }).concat(all.filter(function (it) { return !it.folderId; }));
-        var shown = list.slice(0, S.kidShown || 40);
-        $('kidGrid').innerHTML = '<p class="hint">' + list.length + ' thing' + (list.length === 1 ? '' : 's') + (q ? ' found' : ' - tap one to see it or add a photo') + '</p><div class="kstuff">' + shown.map(kidTile).join('') + '</div>' +
-          (list.length > shown.length ? '<p class="center"><button class="btn" data-act="kidMore">Show more</button></p>' : '');
+        var html = '';
+        if (q) {
+          var list = fuzzyFind(q, all, 60).map(function (x) { return x.it; });
+          html = '<p class="hint">' + list.length + ' thing' + (list.length === 1 ? '' : 's') + ' found</p><div class="kstuff">' + list.map(kidTile).join('') + '</div>';
+        } else {
+          var film = all.filter(function (it) { return !it.folderId; });
+          var got = all.filter(function (it) { return it.folderId; });
+          var shown = got.slice(0, S.kidShown || 40);
+          html = '<p class="hint">' + all.length + ' thing' + (all.length === 1 ? '' : 's') + ' - tap one to see it or add a photo</p>';
+          if (film.length) {
+            html += '<div class="kstuffFilm"><h2>D\u2019oh! Still to film</h2><p class="hint">' + film.length + ' with no photo yet — tap one to add one</p>' +
+              '<div class="kstuff">' + film.map(kidTile).join('') + '</div></div>';
+          }
+          html += (film.length ? '<h2 class="kstuffGot">Got a photo</h2>' : '') +
+            '<div class="kstuff">' + shown.map(kidTile).join('') + '</div>' +
+            (got.length > shown.length ? '<p class="center"><button class="btn" data-act="kidMore">Show more</button></p>' : '');
+        }
+        $('kidGrid').innerHTML = html;
         watchThumbs();
       };
       var t = null;
@@ -3415,6 +3435,7 @@ SCREENS.who = function () {
         h += '<div id="homeWeek"></div>';
         h += '<div id="homeRewards"></div>';
         h += '<div id="homeWays"></div>';
+        h += '<div id="homeFilm"></div>';
         h += funWorthHtml();
         h += '<div id="homeOnThisDay"></div><div id="homeSetBars"></div>';
         h += dadWheelCardHtml();
@@ -3434,6 +3455,7 @@ SCREENS.who = function () {
         }
         h += '<div id="homeRewards"></div>';
         h += '<div id="homeWays"></div>';
+        h += '<div id="homeFilm"></div>';
         h += funWorthHtml();
         h += '<div id="homeOnThisDay"></div><div id="homeSetBars"></div>';
         h += '<div class="tiles">';
@@ -3463,6 +3485,7 @@ SCREENS.who = function () {
         h += '<div class="row" style="margin-top:6px"><button class="btn small" data-act="refresh">\u21BB Refresh</button><button class="btn small" data-act="go" data-to="stats">\uD83D\uDCCA Stats</button><button class="btn small" data-act="go" data-to="checklists">\u2705 Checklists</button><button class="btn small" data-act="go" data-to="help">\u2753 Help</button></div>';
       }
       setMain(h);
+      try { paintStillToFilm(); } catch (eF) {}
       paintHomeFunAndMiles();
       bindFunSwipe();
       if (S.role === PRIV) {
@@ -5114,10 +5137,47 @@ SCREENS.who = function () {
     return h + '</div>';
   }
   function jobsCardHtml(r, kid) { return waysToEarnHtml(r, kid); }
+  function stillToFilmItems() {
+    var idn = function (it) { var m = String(it.id || '').match(/(\d+)\s*$/); return m ? +m[1] : 0; };
+    return (S.items || []).filter(function (it) {
+      if (it.folderId || !isOwned(it) || neverShow(it.name)) return false;
+      return S.kid ? kidSafe(it) : !sonHidden(it.name);
+    }).sort(function (a, b) { return idn(b) - idn(a) || (b.row || 0) - (a.row || 0); });
+  }
+  function stillToFilmCardHtml() {
+    var list = stillToFilmItems();
+    if (!list.length) return '';
+    var kid = !!S.kid, act = kid ? 'kidItem' : 'item', cap = 8, shown = list.slice(0, cap);
+    var h = '<div class="filmCard">' +
+      '<h2>D\u2019oh! Still to film</h2>' +
+      '<p class="waysSub">' + (kid
+        ? 'These don\u2019t have a photo yet. Tap one and you can add one.'
+        : 'Owned items with no photo folder yet. Tap one to open it and add a photo.') + '</p>' +
+      '<div class="filmRows">';
+    shown.forEach(function (it) {
+      h += '<button type="button" class="filmRow" data-act="' + act + '" data-key="' + esc(it.key) + '">' +
+        thumbHtml(it) +
+        '<span class="filmTxt"><b>' + esc(it.name) + '</b><small>' + esc(it.range || 'No photo yet') + '</small></span>' +
+        '</button>';
+    });
+    h += '</div>';
+    if (list.length > cap) {
+      if (kid) h += '<button type="button" class="btn small waysOpen" data-act="go" data-to="kidStuff">See all ' + list.length + '</button>';
+      else h += '<button type="button" class="btn small waysOpen" data-act="filmSeeAll">See all ' + list.length + '</button>';
+    }
+    return h + '</div>';
+  }
+  function paintStillToFilm() {
+    var el = $('kidFilm') || $('homeFilm');
+    if (!el) return;
+    el.innerHTML = stillToFilmCardHtml();
+    if (el.innerHTML) watchThumbs();
+  }
   function paintWaysToEarn(r) {
     var el = $('kidWays') || $('homeWays');
     if (!el) return;
     el.innerHTML = waysToEarnHtml(r || RW || {}, !!S.kid);
+    paintStillToFilm();
   }
   function paintJobs(r) { paintWaysToEarn(r); }
   function runEarnJob(kind) {
@@ -5557,6 +5617,13 @@ SCREENS.who = function () {
       case 'kidEnter': enterKid(); break;
       case 'kidExit': exitKid(); break;
       case 'kidItem': $('sheet').hidden = true; go('kidItem', { key: key }); break;
+      case 'filmSeeAll':
+        S.filters = S.filters || {};
+        S.filters.photos = 'no';
+        S.filters.sort = 'newest';
+        S.shown = 60;
+        go('collection');
+        break;
       case 'kidMore': S.kidShown = (S.kidShown || 40) + 40; if (S.redrawKid) S.redrawKid(); break;
       case 'kidSnap': if (S.current) openCamera({ key: S.current.key, name: S.current.name }); break;
       case 'kidGot': kidGot(+el.getAttribute('data-i')); break;
