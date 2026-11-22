@@ -118,7 +118,7 @@
   }
   function offlineErr() { return new Error('\uD83D\uDCF4 No signal right now, and this bit wasn\u2019t saved on the phone yet. It\u2019ll work again as soon as you\u2019re back online.'); }
   var READ_FNS = { getBootstrap: 1, getWanted: 1, getChecklists: 1, getChecklist: 1, getItem: 1, getStats: 1, getAllMissing: 1, getPostedBoard: 1, getDuplicates: 1, getPhotoTodo: 1, getNoValue: 1, getValueSummary: 1, getItemPhotos: 1, getHistory: 1, getRewards: 1, getQueuePhoto: 1 };
-  var WRITE_FNS = { saveItem: 1, addItem: 1, markGotIt: 1, setPosted: 1, uploadMedia: 1, saveBarcode: 1, setMainPhoto: 1, requestReward: 1, decideReward: 1, saveRewards: 1, decidePhoto: 1 };
+  var WRITE_FNS = { saveItem: 1, addItem: 1, markGotIt: 1, setPosted: 1, uploadMedia: 1, saveBarcode: 1, setMainPhoto: 1, requestReward: 1, decideReward: 1, saveRewards: 1, savePointRules: 1, decidePhoto: 1 };
   function tokenNow() { return S.kid ? '' : (LS.get('dadToken') || ''); }   // Son's mode never sends the PIN token
   function cacheKey(fn, args) { return 'c|' + fn + '|' + JSON.stringify(args) + '|' + (tokenNow() && dadUnlocked() ? 'p' : 'n'); }
   function hasPending(args) { return args.some(function (a) { return typeof a === 'string' && a.indexOf('pending:') === 0; }); }
@@ -577,9 +577,36 @@
     if (tb) { var b = tb.querySelector('.tbBadge'); if (n && !b) { b = document.createElement('span'); b.className = 'tbBadge'; tb.appendChild(b); } if (b) { if (n) b.textContent = n; else b.remove(); } }
     var hb = $('dealLine'); if (hb) hb.innerHTML = n ? '<span class="pill red">\uD83D\uDD25 ' + n + ' deal' + (n === 1 ? '' : 's') + ' under your max price</span>' : '';
   }
+  function missingToWanted(rows) {
+    return (rows || []).map(function (r) {
+      return { kind: 'checklist', ref: r.tab + '|' + r.row, name: r.name, range: r.set || r.tab, series: r.number || '', year: r.year || '', conditionWanted: '', notes: '' };
+    });
+  }
+  function mergeWantedAndMissing(wanted, missing) {
+    var out = [], seen = {};
+    (wanted || []).forEach(function (w) {
+      out.push(w);
+      var k = norm(w.name);
+      if (k) seen[k] = 1;
+    });
+    missingToWanted(missing).forEach(function (w) {
+      var k = norm(w.name);
+      if (k && seen[k]) return;
+      if (k) seen[k] = 1;
+      out.push(w);
+    });
+    return out;
+  }
   function loadHomeWanted() {
-    return call('getWanted', S.kid ? (THEME.roles.filter(function (r) { return r !== PRIV; })[0] || 'Son') : S.role).then(function (list) {
-      S.homeWanted = (list || []).filter(function (w) { return !neverShow(w.name); }); refreshDealBadges(); return S.homeWanted;
+    var role = S.kid ? (THEME.roles.filter(function (r) { return r !== PRIV; })[0] || 'Son') : S.role;
+    return Promise.all([
+      call('getWanted', role).catch(function () { return []; }),
+      call('getAllMissing').catch(function () { return []; })
+    ]).then(function (res) {
+      var list = mergeWantedAndMissing(res[0] || [], res[1] || []).filter(function (w) { return !neverShow(w.name); });
+      S.homeWanted = list;
+      refreshDealBadges();
+      return list;
     }).catch(function () { return S.homeWanted || []; });
   }
 
@@ -1102,6 +1129,7 @@
     S.boot = null; S.items = []; S.homeWanted = null; S.history = []; S.add = null;
     S.kidGreeting = true;
     pickFunUnitRandom();
+    pickJokeOnOpen();
     go('kid', {}, true);
   }
   function exitKid() {
@@ -1126,16 +1154,19 @@
   SCREENS.kid = function () {
     loadBoot().then(function () {
       var mine = kidItems();
-      var h = '<div class="kidHead"><div class="mascot small">' + THEME.mascotSvg.replace(/fsBite/g, 'fsBiteK') + '</div><h1>Hiya, ' + esc(KID_ROLE) + '! \uD83D\uDC4B</h1></div>' +
+      var h = '<div class="kidHead"><div class="mascot small">' + THEME.mascotSvg.replace(/fsBite/g, 'fsBiteK') + '</div><h1>Hiya wee man \uD83D\uDC4B</h1></div>' +
+        jokeHtml() +
         funWorthHtml() +
+        '<div class="kfeatures">' +
+        '<button type="button" class="kfeature pinkL" data-act="go" data-to="kidBadges"><span>\uD83C\uDFC6</span><span class="kfeatTxt"><b>My badges</b><small id="kidBadgeN">see what you\u2019ve earned</small></span></button>' +
+        '<button type="button" class="kfeature yel" data-act="go" data-to="kidRewards"><span>\u2B50</span><span class="kfeatTxt"><b>My points</b><small id="kidPtsN">earn rewards!</small></span></button>' +
+        '</div>' +
         '<div class="ownCard card"><label class="ownLabel" for="kidSearch">\uD83D\uDD0D Have we got it?</label><input id="kidSearch" class="ownInput" type="search" placeholder="Type a name\u2026" autocomplete="off"><div id="kidOwnOut"></div></div>' +
         '<div class="kgrid">' +
         '<button class="kbig yel" data-act="go" data-to="kidStuff"><span>\uD83E\uDDF8</span><b>Our stuff</b><small>' + mine.length + ' things</small></button>' +
         '<button class="kbig pink" data-act="go" data-to="kidHunt"><span>\u2B50</span><b>On the hunt</b><small id="kidHuntN">find these!</small></button>' +
         '<button class="kbig skyL" data-act="scan"><span>\uD83D\uDCF7</span><b>Scan a box</b><small>have we got it?</small></button>' +
         '<button class="kbig green" data-act="kidNew"><span>\u2795</span><b>New find!</b><small>snap it and save it</small></button>' +
-        '<button class="kbig yel kwide" data-act="go" data-to="kidRewards"><span>\u2B50</span><b>My points</b><small id="kidPtsN">earn rewards!</small></button>' +
-        '<button class="kbig pinkL kwide" data-act="go" data-to="kidBadges"><span>\uD83C\uDFC6</span><b>My badges</b><small id="kidBadgeN">see what you\u2019ve earned</small></button>' +
         '<button class="kbig paper" data-act="letterOpen"><span>\u2709\uFE0F</span><b>Letter from Dad</b><small>How it all started</small></button>' +
         '<button class="kbig paper" data-act="notesOpen"><span>\uD83D\uDCDD</span><b>Notes from Dad</b><small>little messages</small></button>' +
         '</div>' +
@@ -1188,21 +1219,21 @@
       done();
       var kl = list.filter(function (w) { return kidSafe(w); });
       S.kidWanted = kl;
-      setMain('<h1>\u2B50 On the hunt</h1><p class="hint">Spotted one? Tap \u201CFound it!\u201D</p><div class="khunt">' + (kl.length ? kl.map(function (w, i) {
-        return '<div class="khuntCard"><b>' + esc(w.name) + '</b><small>' + esc(w.range || '') + '</small><button class="btn green kbtn" data-act="kidGot" data-i="' + i + '">\uD83C\uDF89 Found it!</button></div>';
-      }).join('') : '<div class="nudge">Nothing on the hunt list right now.</div>') + '</div>');
+      setMain('<h1>\u2B50 On the hunt</h1><p class="hint">Spotted one? Tap \u201CFound it!\u201D</p>' + renderWantedGroups(kl, true));
     }).catch(oops);
   };
   function kidGot(i) {
     var w = (S.kidWanted || [])[i]; if (!w) return;
-    confirmSheet('Found it? \uD83C\uDF89', 'Did we get <b>' + esc(w.name) + '</b>? It\u2019ll go into our collection.', 'Yes, we got it!', 'Not yet').then(function (ok) {
+    var fromList = w.kind === 'checklist';
+    confirmSheet('Found it? \uD83C\uDF89', fromList ? 'Did we get <b>' + esc(w.name) + '</b>? I\u2019ll tick it off the hunt list.' : 'Did we get <b>' + esc(w.name) + '</b>? It\u2019ll go into our collection.', 'Yes, we got it!', 'Not yet').then(function (ok) {
       if (!ok) return;
-      busy('Adding it to our stuff\u2026');
+      busy(fromList ? 'Ticking it off\u2026' : 'Adding it to our stuff\u2026');
       return call('markGotIt', w.kind, w.ref, w.name, KID_ROLE).then(function (r) {
         done(); bumpKid('kidFound'); S.boot = null; S.homeWanted = null;
-        pointsNote(r, r.queued ? '\uD83C\uDF89 Got it! It\u2019ll save when there\u2019s signal.' : '\uD83C\uDF89 Brilliant! It\u2019s in our collection.');
+        pointsNote(r, r.queued ? '\uD83C\uDF89 Got it! It\u2019ll save when there\u2019s signal.' : (fromList || r.suggestAdd ? '\uD83C\uDF89 Brilliant! Ticked off the hunt list.' : '\uD83C\uDF89 Brilliant! It\u2019s in our collection.'));
         return confirmSheet('Take a photo?', 'Snap <b>' + esc(r.name || w.name) + '</b> now? (No faces - hands are fine.)', '\uD83D\uDCF7 Take photo', 'Later').then(function (snap) {
-          if (snap && r.key) openCamera({ key: r.key, name: r.name || w.name }); else go('kidHunt', {}, true);
+          if (snap && r.key) openCamera({ key: r.key, name: r.name || w.name });
+          else go('kidHunt', {}, true);
         });
       });
     }).catch(oops);
@@ -1240,6 +1271,7 @@
     var el = $('dadLetter'); if (!el) return;
     var wasOpen = !el.hidden;
     el.hidden = false;
+    dressOverlay(el);
     layerOpen(wasOpen);
     try { var b = el.querySelector('.letterGo'); if (b) b.focus(); } catch (e) { /* ignore */ }
   }
@@ -1266,7 +1298,7 @@
     return n == null || n >= LETTER_EVERY_DAYS;
   }
   function hideDadLetter() {
-    var el = $('dadLetter'); if (el) el.hidden = true;
+    var el = $('dadLetter'); if (el) { el.hidden = true; el.classList.remove('popIn'); }
     markLetterShown();
   }
   function bumpKidNoteCount() {
@@ -1324,6 +1356,165 @@
     if (a.indexOf(i) < 0) a.push(i);
     LS.set('kidNotesSeen', JSON.stringify(a));
   }
+
+  function reducedMotion() {
+    try { return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); }
+    catch (e) { return false; }
+  }
+  function dressOverlay(el) {
+    if (!el) return;
+    var sky = el.querySelector('.letterSky');
+    if (sky && !sky.innerHTML) sky.innerHTML = cloudsSvg();
+    el.classList.remove('popIn');
+    try { void el.offsetWidth; } catch (e) {}
+    el.classList.add('popIn');
+  }
+  function noteEmojiFor(t) {
+    var s = String(t || '').toLowerCase();
+    var rules = [
+      [/loft|\bbox/, '\uD83D\uDCE6'],
+      [/donut/, '\uD83C\uDF69'],
+      [/dons|football|come up/, '\u26BD'],
+      [/tractor|farm/, '\uD83D\uDE9C'],
+      [/photo|camera|snap/, '\uD83D\uDCF7'],
+      [/ebay|bargain/, '\uD83E\uDD1D'],
+      [/curious|treasure|hunt|find/, '\uD83D\uDD0D'],
+      [/saturday|morning/, '\u2600\uFE0F'],
+      [/shelf|house|yours/, '\uD83C\uDFE0'],
+      [/homer/, '\uD83C\uDF69'],
+      [/proud|love you|buddy|best thing|wee man/, '\u2764\uFE0F']
+    ];
+    for (var i = 0; i < rules.length; i++) if (rules[i][0].test(s)) return rules[i][1];
+    return Math.random() < 0.5 ? '\u2764\uFE0F' : '\u2B50';
+  }
+  var NOTE_BYE = [
+    'Aww thanks!', 'Cheers Dad!', 'Woohoo!', 'Ay caramba!', 'Mmm, donuts\u2026',
+    'Eat my shorts!', 'Love you too!', 'Come on the Dons!', 'Excellent\u2026',
+    'Okily dokily!', 'Cowabunga!', 'Got it, boss!', 'Ha-ha!', 'Nice one!',
+    'Legend, Dad!', 'You bet!', 'Too right!', 'Ace!', 'Brilliant!',
+    'Hi-diddly-ho!', 'D\u2019oh\u2026 thanks!', 'Aye aye!', 'Cracking!',
+    'Love a note!', 'Noted!', 'Right you are!', 'On it!', 'Cool beans!',
+    'Ya dancer!', 'Pure dead brilliant!', 'Let\u2019s go!', 'Best Dad ever!'
+  ];
+  var NOTE_CHASE_SAY = ['Too slow!', 'Missed me!', 'Over here!', 'Nearly!', 'Heh heh!', 'Try again!', 'Catch me!'];
+  var NOTE_UI = { chase: false, need: 0, got: 0, skipTimer: 0, fromPointer: 0 };
+  function clearNoteChase() {
+    NOTE_UI.chase = false; NOTE_UI.need = 0; NOTE_UI.got = 0;
+    if (NOTE_UI.skipTimer) { clearTimeout(NOTE_UI.skipTimer); NOTE_UI.skipTimer = 0; }
+    var btn = $('noteGoBtn') || document.querySelector('#dadNote [data-act="noteGo"]');
+    if (btn) {
+      btn.style.position = ''; btn.style.left = ''; btn.style.top = '';
+      btn.style.right = ''; btn.style.bottom = ''; btn.style.margin = '';
+      btn.style.width = ''; btn.style.maxWidth = '';
+      btn.classList.remove('noteWobble');
+    }
+    var skip = $('noteSkip'); if (skip) skip.hidden = true;
+    var cap = $('noteChaseSay'); if (cap) cap.hidden = true;
+  }
+  function setupNoteButton() {
+    clearNoteChase();
+    var btn = $('noteGoBtn') || document.querySelector('#dadNote [data-act="noteGo"]');
+    if (btn) btn.textContent = NOTE_BYE[Math.floor(Math.random() * NOTE_BYE.length)];
+    if (btn && !btn.getAttribute('data-note-bound')) {
+      btn.setAttribute('data-note-bound', '1');
+      btn.addEventListener('pointerdown', function (e) {
+        if (e.button != null && e.button !== 0) return;
+        NOTE_UI.fromPointer = Date.now();
+        if (e.cancelable) e.preventDefault();
+        onNoteGo(e);
+      });
+    }
+    NOTE_UI.chase = !reducedMotion() && Math.random() < 1 / 3;
+    if (NOTE_UI.chase) {
+      NOTE_UI.need = 2 + Math.floor(Math.random() * 3);
+      NOTE_UI.got = 0;
+      NOTE_UI.skipTimer = setTimeout(function () { var sk = $('noteSkip'); if (sk) sk.hidden = false; }, 5000);
+    }
+  }
+  function jumpNoteButton() {
+    var wrap = $('dadNote'), btn = $('noteGoBtn') || (wrap && wrap.querySelector('[data-act="noteGo"]'));
+    if (!wrap || !btn) return;
+    var vv = window.visualViewport;
+    var vx = (vv && vv.offsetLeft) || 0, vy = (vv && vv.offsetTop) || 0;
+    var vw = (vv && vv.width) || window.innerWidth, vh = (vv && vv.height) || window.innerHeight;
+    var padX = 12, padTop = 16, padBot = 16;
+    try {
+      var cs = getComputedStyle(wrap);
+      padTop = Math.max(16, parseFloat(cs.paddingTop) || 0);
+      padBot = Math.max(16, parseFloat(cs.paddingBottom) || 0);
+      padX = Math.max(12, parseFloat(cs.paddingLeft) || 0);
+    } catch (e) {}
+    var bw = btn.offsetWidth, bh = btn.offsetHeight;
+    var minL = vx + padX, minT = vy + padTop;
+    var maxL = vx + vw - bw - padX, maxT = vy + vh - bh - padBot;
+    if (maxL < minL) maxL = minL;
+    if (maxT < minT) maxT = minT;
+    var left, top, tries = 0, cur = btn.getBoundingClientRect();
+    do {
+      left = minL + Math.random() * (maxL - minL);
+      top = minT + Math.random() * (maxT - minT);
+      tries++;
+    } while (tries < 10 && Math.hypot(left - cur.left, top - cur.top) < Math.min(90, Math.max(40, (maxL - minL) / 3)));
+    btn.style.position = 'fixed';
+    btn.style.margin = '0';
+    btn.style.left = Math.round(left) + 'px';
+    btn.style.top = Math.round(top) + 'px';
+    btn.style.right = 'auto';
+    btn.style.bottom = 'auto';
+    btn.style.width = bw + 'px';
+    btn.style.maxWidth = 'calc(100vw - 24px)';
+    btn.classList.remove('noteWobble');
+    try { void btn.offsetWidth; } catch (e2) {}
+    btn.classList.add('noteWobble');
+    var cap = $('noteChaseSay');
+    if (cap) {
+      cap.textContent = NOTE_CHASE_SAY[Math.floor(Math.random() * NOTE_CHASE_SAY.length)];
+      cap.hidden = false;
+      var capW = 130;
+      cap.style.left = Math.round(Math.min(vx + vw - capW - 8, Math.max(vx + 8, left))) + 'px';
+      cap.style.top = Math.round(Math.max(vy + padTop, top - 34)) + 'px';
+    }
+  }
+  function onNoteGo(e) {
+    if (NOTE_UI.chase) {
+      NOTE_UI.got += 1;
+      if (NOTE_UI.got < NOTE_UI.need) {
+        if (e && e.preventDefault) e.preventDefault();
+        if (e && e.stopPropagation) e.stopPropagation();
+        jumpNoteButton();
+        return;
+      }
+    }
+    thanksDadNote();
+  }
+  function thanksDadNote() {
+    clearNoteChase();
+    sprinkleConfetti($('dadNote'), function () {
+      if (NAV.pushed > 0) layerBack(); else hideDadNote();
+    });
+  }
+  function sprinkleConfetti(root, done) {
+    if (!root || reducedMotion()) { if (done) done(); return; }
+    var box = root.querySelector('.noteSprinkles');
+    if (!box) { box = document.createElement('div'); box.className = 'noteSprinkles'; root.appendChild(box); }
+    box.innerHTML = '';
+    var colors = ['#F4A0B5', '#FED90F', '#FFFFFF', '#E4572E', '#1A3A9C', '#7BD389'];
+    var wr = root.getBoundingClientRect();
+    var cx = wr.width / 2, cy = wr.height * 0.62;
+    for (var i = 0; i < 28; i++) {
+      var d = document.createElement('span');
+      d.className = 'noteSprinkle';
+      d.style.left = cx + 'px';
+      d.style.top = cy + 'px';
+      d.style.background = colors[i % colors.length];
+      var ang = Math.random() * Math.PI * 2, dist = 80 + Math.random() * 150;
+      d.style.setProperty('--sx', (Math.cos(ang) * dist) + 'px');
+      d.style.setProperty('--sy', (Math.sin(ang) * dist) + 'px');
+      box.appendChild(d);
+    }
+    setTimeout(function () { box.innerHTML = ''; if (done) done(); }, 720);
+  }
+
   function showDadNote(idx) {
     var fromList = arguments.length > 0 && idx != null;
     var i = fromList ? +idx : nextNoteIndex();
@@ -1331,15 +1522,20 @@
     var el = $('dadNote'); if (!el) return;
     var t = DAD_NOTES[i];
     if ($('noteBody')) $('noteBody').textContent = t;
+    var emo = $('noteEmoji'); if (emo) emo.textContent = noteEmojiFor(t);
     var sign = $('noteSign'); if (sign) sign.hidden = noteHasSign(t);
     var wasOpen = !el.hidden;
     el.hidden = false;
+    dressOverlay(el);
+    setupNoteButton();
     layerOpen(wasOpen);
     if (!fromList) markNoteSeen(i);
     try { var b = el.querySelector('[data-act="noteGo"]'); if (b) b.focus(); } catch (e) { /* ignore */ }
   }
   function hideDadNote() {
-    var el = $('dadNote'); if (el) el.hidden = true;
+    clearNoteChase();
+    var el = $('dadNote');
+    if (el) { el.hidden = true; el.classList.remove('popIn'); var sp = el.querySelector('.noteSprinkles'); if (sp) sp.innerHTML = ''; }
   }
   SCREENS.kidNotes = function () {
     var h = backBtn() + '<h1>\uD83D\uDCDD Notes from Dad</h1><p class="hint">Little notes Dad leaves for you. The big letter is still under Letter from Dad.</p>' +
@@ -1348,6 +1544,260 @@
           (noteHasSign(t) ? '' : '<p class="noteLiSign">Dad x</p>') + '</button>';
       }).join('');
     setMain(h);
+  }
+
+  var JOKES = [
+    { q: "What do you call a boomerang that won't come back?", a: "A stick." },
+    { q: "What's orange and sounds like a parrot?", a: "A carrot." },
+    { q: "Why did the bicycle fall over?", a: "It was two-tyred." },
+    { q: "What do you call cheese that isn't yours?", a: "Nacho cheese." },
+    { q: "Why don't eggs tell jokes?", a: "They'd crack each other up." },
+    { q: "What do you call a bear with no teeth?", a: "A gummy bear." },
+    { q: "What did the ocean say to the beach?", a: "Nothing, it just waved." },
+    { q: "Why was the broom late?", a: "It over-swept." },
+    { q: "What do you call a fake noodle?", a: "An impasta." },
+    { q: "Why did the cookie go to the doctor?", a: "It felt crumby." },
+    { q: "What has hands but can't clap?", a: "A clock." },
+    { q: "Why can't your nose be 12 inches long?", a: "Because then it would be a foot." },
+    { q: "What do you call a sleeping bull?", a: "A bulldozer." },
+    { q: "Why did the golfer bring two pairs of trousers?", a: "In case he got a hole in one." },
+    { q: "What do you call a pile of cats?", a: "A meowtain." },
+    { q: "Why did the tomato blush?", a: "Because it saw the salad dressing." },
+    { q: "What's brown and sticky?", a: "A stick." },
+    { q: "Why was six afraid of seven?", a: "Because seven eight nine." },
+    { q: "What do you call a fly without wings?", a: "A walk." },
+    { q: "Why did the calendar get stressed?", a: "Its days were numbered." },
+    { q: "What do you call a song sung in a car?", a: "A cartoon." },
+    { q: "What do you call an alligator in a vest?", a: "An investigator." },
+    { q: "Why are frogs so happy?", a: "They eat whatever bugs them." },
+    { q: "What do you call a pig that does karate?", a: "A pork chop." },
+    { q: "Why did the cow become an astronaut?", a: "To visit the moooon." },
+    { q: "What do you call a magic dog?", a: "A labracadabrador." },
+    { q: "Why do bees have sticky hair?", a: "They use honeycombs." },
+    { q: "How do you stop a bull from charging?", a: "Take away its credit card." },
+    { q: "What do you call a fish with no eyes?", a: "A fsh." },
+    { q: "Why did the banana go to the doctor?", a: "It wasn't peeling well." },
+    { q: "Why did the tea bag go to school?", a: "It wanted to be a brew-n medallist." },
+    { q: "Why did the milk go to school?", a: "To become a little cultured." },
+    { q: "What do you call cheese at a football match?", a: "A little cheer-dar." },
+    { q: "Why was the maths book so sad?", a: "It had too many problems." },
+    { q: "What is a teacher's favourite tea?", a: "Proper-tea." },
+    { q: "Why did the student eat his homework?", a: "The teacher said it was a piece of cake." },
+    { q: "What's a maths teacher's favourite season?", a: "Sum-mer." },
+    { q: "Why did the teacher wear sunglasses?", a: "Her pupils were so bright." },
+    { q: "Why did the boy bring a ladder to school?", a: "He wanted to go to high school." },
+    { q: "Why did the goldfish go to school?", a: "To swim to the top of the class." },
+    { q: "Why did the teddy go to school?", a: "To become a stuffed-with-knowledge bear." },
+    { q: "Why did the crayon go to school?", a: "It wanted to draw attention, very politely." },
+    { q: "Why did the school bell blush?", a: "It had just been rung in front of everyone." },
+    { q: "Why did the owl make a great teacher?", a: "Because it was a little wise and very patient." },
+    { q: "Why did the apple go to school?", a: "It wanted to become a little core-educated." },
+    { q: "What did one crayon say to the other?", a: "You're looking very bright today." },
+    { q: "Why did the present go to school?", a: "It wanted to be well wrapped up in knowledge." },
+    { q: "Why did the stadium get so hot?", a: "All the fans were in it." },
+    { q: "Why did the footballer take a pencil to the match?", a: "So he could draw a foul." },
+    { q: "Why was the football team so cool?", a: "They had lots of fans." },
+    { q: "I used to be a goalkeeper.", a: "But I let myself down." },
+    { q: "Why did the player bring string to the game?", a: "To tie the score." },
+    { q: "What's a ghost's favourite position?", a: "Ghoul-keeper." },
+    { q: "Why did the football go to school?", a: "To get a little more kick out of class." },
+    { q: "Why did the referee go to the optician?", a: "He kept missing the offside." },
+    { q: "How do footballers stay cool?", a: "They stand next to the fans." },
+    { q: "Why did the striker bring a torch?", a: "It was a late kick-off." },
+    { q: "Why was the pitch so well behaved?", a: "It knew where the lines were." },
+    { q: "What do footballers eat with their pies?", a: "A nice cup of team." },
+    { q: "Why was the football wet?", a: "It was a cup tie." },
+    { q: "Why was the goalpost so proud?", a: "It had been a great sport all season." },
+    { q: "What's a penguin's favourite football position?", a: "Left wing, with a very smart waddle." },
+    { q: "Why did the Dons take a ladder to Pittodrie?", a: "They wanted to reach the top of the league." },
+    { q: "Knock knock. Who's there? Don. Don who?", a: "Dons are at home today — coming?" },
+    { q: "Why was the Dons scarf so cheerful?", a: "It was red and gold with excitement." },
+    { q: "What do you call an Aberdeen fan with a packed lunch?", a: "A happy Pittodrie pie fan." },
+    { q: "Why do the Dons never get lost on match day?", a: "They always Come Up The Dons." },
+    { q: "What's the Dons' favourite kind of weather?", a: "A red-hot home game." },
+    { q: "Why did the football take a bus to Aberdeen?", a: "It had a ticket for Pittodrie." },
+    { q: "What do Dons fans sing in a bakery?", a: "Come on you buns." },
+    { q: "Why was the Pittodrie grass grinning?", a: "The Dons had just scored." },
+    { q: "Why did the Dons bring a pencil to the derby?", a: "To draw a win." },
+    { q: "What do you call a rainy match at Pittodrie?", a: "A perfect day for a pie and a cheer." },
+    { q: "Why did the pencil case go to the match?", a: "It wanted to draw 1-0 to the Dons." },
+    { q: "Why did the donut go to Pittodrie?", a: "It wanted to see a jammy goal." },
+    { q: "Why did the chicken watch the Dons?", a: "It heard there might be a fowl at the final whistle." },
+    { q: "Why did the snowman take a scarf to Pittodrie?", a: "Even frozen fans like to cheer in red and gold." },
+    { q: "Why did the scarecrow get a medal?", a: "He was outstanding in his field." },
+    { q: "What has ears but can't hear?", a: "A field of corn." },
+    { q: "Why did the tractor turn up early?", a: "It wanted to get ahead of the plough." },
+    { q: "What do you call a tractor that tells jokes?", a: "A laugh-a-Massey." },
+    { q: "Why don't tractors ever get lost?", a: "They always follow the furrows." },
+    { q: "What did the farmer say to the Massey Ferguson?", a: "You really drive me bale-y." },
+    { q: "What do you call a sheep with a sports car?", a: "A Lamborghini." },
+    { q: "Why did the chicken join the farm band?", a: "It had the drumsticks." },
+    { q: "What do you get if you cross a tractor with a kangaroo?", a: "A machine that jumps to the next field." },
+    { q: "Why was the barn so noisy?", a: "The cows had a moo-sical." },
+    { q: "What's a tractor's favourite snack?", a: "Hay-stackers." },
+    { q: "What did the horse say after a long trot?", a: "That's enough, I'm hoarse." },
+    { q: "Why don't farmers tell secrets in a field of corn?", a: "Too many ears." },
+    { q: "What's a scarecrow's favourite fruit?", a: "Straw-berries." },
+    { q: "Why did the Massey Ferguson blush?", a: "It saw the combine looking at it." },
+    { q: "What do you call a cow in a field of daisies?", a: "A happy moo-d." },
+    { q: "Why did the tractor take a nap?", a: "It had had a long, tyred day." },
+    { q: "What's the fastest vegetable on the farm?", a: "The runner bean." },
+    { q: "Why did the tractor honk at the sheep?", a: "It was just saying 'after ewe'." },
+    { q: "What's the warmest jumper on the farm?", a: "The woolly one from a very kind sheep." },
+    { q: "How do you know if Santa's been in the kitchen?", a: "The mince pies are missing and the carrots have a nibble." },
+    { q: "Why did the bauble blush?", a: "It saw the fairy on top of the tree." },
+    { q: "What do elves use to keep score?", a: "A wrapping tally." },
+    { q: "What did one snowflake say to the other?", a: "Don't flake out on me now." },
+    { q: "Why did the ghost go to the Christmas party?", a: "It was there in spirit." },
+    { q: "What's the best seat at Christmas dinner?", a: "The one nearest the roast potatoes." },
+    { q: "What do you call a sleeping dinosaur?", a: "A dino-snore." },
+    { q: "Why did the dinosaur cross the road?", a: "Because chickens hadn't been invented yet." },
+    { q: "How do you know there's a dinosaur in the fridge?", a: "The door won't shut." },
+    { q: "What's a T-rex's favourite biscuit?", a: "One it can actually hold, which is tricky." },
+    { q: "Why can't a T-rex clap?", a: "Because they're extinct, and also those little arms." },
+    { q: "What do you call a dinosaur at a tea party?", a: "A dino-scone." },
+    { q: "Why was the pterodactyl so good at tennis?", a: "It had a smashing wingspan." },
+    { q: "How does a dinosaur cheer at a match?", a: "Dino-score!" },
+    { q: "What do you call a dinosaur that writes jokes?", a: "A pun-asaurus." },
+    { q: "What do you say to a cold stegosaurus?", a: "Here's a jumper, you look a little dino-sore." },
+    { q: "Where do dinosaurs buy their wellies?", a: "At a dino-store." },
+    { q: "Why did the triceratops take a pencil to the museum?", a: "To draw its favourite fossils." },
+    { q: "What do dinosaurs have that no other animals have?", a: "Baby dinosaurs." },
+    { q: "How do you ask a dinosaur to lunch?", a: "Tea-rex?" },
+    { q: "What do you call a dinosaur that sits on a biscuit?", a: "A dino-crunch." },
+    { q: "Why are dinosaurs brilliant at hide-and-seek in museums?", a: "They're already standing very, very still." },
+    { q: "Why did the dinosaur take a bus to the museum?", a: "Its little arms couldn't reach the tickets." },
+    { q: "What do you call a dinosaur that loves football?", a: "A goal-asaurus." },
+    { q: "What's a dinosaur's favourite crisp flavour?", a: "Roar-ast chicken." },
+    { q: "What do you call a dinosaur in wellies?", a: "Ready for a very muddy adventure." },
+    { q: "What do you call a quiet classroom of dinosaurs?", a: "A dino-hush, just before lunch." },
+    { q: "What do you call a dinosaur that loves school?", a: "A very clever dino-swot, in the nicest way." },
+    { q: "What do you call a dinosaur that never gives up?", a: "A try-try-try-ceratops." },
+    { q: "Knock knock. Who's there? Boo. Boo who?", a: "Don't cry, it's only a joke!" },
+    { q: "Knock knock. Who's there? Lettuce. Lettuce who?", a: "Lettuce in, it's freezing out here!" },
+    { q: "Knock knock. Who's there? Atch. Atch who?", a: "Bless you!" },
+    { q: "Knock knock. Who's there? Nobel. Nobel who?", a: "No bell, that's why I knocked!" },
+    { q: "Knock knock. Who's there? Tank. Tank who?", a: "You're welcome!" },
+    { q: "Knock knock. Who's there? Ice cream. Ice cream who?", a: "Ice cream if you don't let me in!" },
+    { q: "Knock knock. Who's there? Orange. Orange who?", a: "Orange you going to let me in?" },
+    { q: "Knock knock. Who's there? A little old lady. A little old lady who?", a: "I didn't know you could yodel!" },
+    { q: "Knock knock. Who's there? Harry. Harry who?", a: "Harry up, it's chilly on the step!" },
+    { q: "Knock knock. Who's there? Annie. Annie who?", a: "Annie more jokes you'd like?" },
+    { q: "Knock knock. Who's there? Luke. Luke who?", a: "Luke through the keyhole and you'll see!" },
+    { q: "Knock knock. Who's there? Cows go. Cows go who?", a: "No, cows go moo!" },
+    { q: "Knock knock. Who's there? Hawaii. Hawaii who?", a: "I'm fine, Hawaii you?" },
+    { q: "Knock knock. Who's there? Interrupting cow. Interrupting cow who?", a: "MOO! She didn't even wait to be asked." },
+    { q: "Knock knock. Who's there? Spell. Spell who?", a: "W-H-O. That was a short spelling test!" },
+    { q: "Knock knock. Who's there? Wooden shoe. Wooden shoe who?", a: "Wooden shoe like to hear another joke?" },
+    { q: "Knock knock. Who's there? Olive. Olive who?", a: "Olive this joke a lot, do you?" },
+    { q: "Knock knock. Who's there? Justin. Justin who?", a: "Justin time for another joke!" },
+    { q: "Knock knock. Who's there? Icy. Icy who?", a: "Icy you waving from the window!" },
+    { q: "Knock knock. Who's there? Dozen. Dozen who?", a: "Dozen anyone want to let me in?" },
+    { q: "Knock knock. Who's there? Alpaca. Alpaca who?", a: "Alpaca the hamper if you pack the crisps!" },
+    { q: "Knock knock. Who's there? Donut. Donut who?", a: "Donut you want to hear a Homer joke too?" },
+    { q: "Knock knock. Who's there? Radio. Radio who?", a: "Radio not, here comes another joke!" },
+    { q: "Knock knock. Who's there? Nessie. Nessie who?", a: "Nessie you around the loch later!" },
+    { q: "Knock knock. Who's there? Irn-Bru. Irn-Bru who?", a: "Irn-Bru-tiful day for a joke, isn't it?" },
+    { q: "Knock knock. Who's there? Tractor. Tractor who?", a: "Tractor maybe we can go for a ride in the field!" },
+    { q: "What do you call a rabbit that tells jokes?", a: "A funny bunny." },
+    { q: "Why did the dog sit in the shade?", a: "It didn't want to be a hot dog." },
+    { q: "What do you call a deer with no eyes?", a: "No eye deer." },
+    { q: "What do you call a deer with no eyes and no legs?", a: "Still no eye deer." },
+    { q: "How do you get an elephant into a fridge?", a: "Open the door, put the elephant in, close the door." },
+    { q: "How do you get a giraffe into a fridge?", a: "Open the door, take the elephant out, put the giraffe in." },
+    { q: "All the animals come to the lion's party, except one. Who's missing?", a: "The giraffe — it's still in the fridge." },
+    { q: "Why does Homer keep a donut in his pocket?", a: "In case of a pink-icing emergency." },
+    { q: "What's Homer's favourite day of the week?", a: "Donut-day, which is luckily all of them." },
+    { q: "Why did Bart take a skateboard to class?", a: "He wanted to roll into first period." },
+    { q: "Why did Krusty open a burger stall?", a: "So he could clown around in the kitchen." },
+    { q: "Why was Ralph so happy at lunch?", a: "He found a sandwich and called it his best friend." },
+    { q: "What did Ralph say to the crayon?", a: "You're a pretty colour. Want to be pals?" },
+    { q: "Why did Homer go to the bakery at dawn?", a: "The early man gets the donut." },
+    { q: "What's Bart's favourite kind of test?", a: "A short one, with a skateboard at the end." },
+    { q: "Why did Marge hide the extra donuts?", a: "She knew Homer had a super-sniffer." },
+    { q: "What do you call Homer at the fridge?", a: "A man on a very important mission." },
+    { q: "What's Ralph's favourite lesson?", a: "Show and tell, especially if lunch is invited." },
+    { q: "Why did Lisa take her saxophone to the park?", a: "So the trees could enjoy a little jazz." },
+    { q: "What did the pink donut say to Homer?", a: "Don't worry, I've saved you a bite." },
+    { q: "What's Maggie's favourite game?", a: "Peekaboo, with a very quiet encore." },
+    { q: "Why did Homer wear a chef's hat?", a: "He was the official donut inspector." },
+    { q: "What's Bart's favourite type of weather?", a: "The kind that's perfect for a skate." },
+    { q: "Why did Ralph bring a stick to show and tell?", a: "He thought it might be a magic wand, or a good friend." },
+    { q: "What's Homer's plan for Christmas Eve?", a: "Guard the mince pies, then accidentally test them." },
+    { q: "What do you call a joke that's come all the way from Springfield?", a: "A Homer-made giggle." },
+    { q: "Why did Bart's skateboard go to school?", a: "To pass with flying wheels." },
+    { q: "What do you call a dinosaur that lives in a loch?", a: "Nessie-saurus." },
+    { q: "Why did the Irn-Bru go to school?", a: "To get a little brighter." },
+    { q: "What's a bagpipe's favourite subject?", a: "Reed-ing." },
+    { q: "Why did Nessie hide under the water?", a: "She was playing a long game of hide-and-seek." },
+    { q: "What do you get if you cross a cow and a bagpipe?", a: "A lot of milk and a lot of puff." },
+    { q: "Why did the haggis go to the party?", a: "Because it was the toast of Burns Night supper." },
+    { q: "What's the most musical potato in Scotland?", a: "A tattie that plays the pipes." },
+    { q: "Why did the can of Irn-Bru blush?", a: "It saw the shortbread looking sweet." },
+    { q: "What's Nessie's favourite snack?", a: "Fish and ships, by the loch." },
+    { q: "Why did the bagpipes go to the doctor?", a: "They were a little flat." },
+    { q: "What do Highland cows say in winter?", a: "It's brrr-illiant up here." },
+    { q: "Why did the Aberdeen rowie go to school?", a: "To become well rounded." },
+    { q: "Why was the tablet so popular?", a: "It was a sweetie from the start." },
+    { q: "What did the loch say to Nessie?", a: "You're my favourite monster pal." },
+    { q: "What's the cheeriest drink in Scotland?", a: "Irn-Bru, on a sunny Saturday." },
+    { q: "What do you call a bagpipe that tells jokes?", a: "A stand-up piper." },
+    { q: "Why did the haggis sit at the front?", a: "It wanted a good view of supper." },
+    { q: "What's Nessie's favourite game?", a: "I spy, with my little loch." },
+    { q: "Why did Nessie start a choir?", a: "She wanted to make a little loch-al music." },
+    { q: "What do you call a cow that plays the bagpipes?", a: "A moo-sician from the glen." },
+    { q: "What's the sweetest thing in a Scottish tin?", a: "A Tunnock's teacake, no contest." }
+  ];
+
+  function jokesSeen() {
+    try {
+      var a = JSON.parse(LS.get('kidJokesSeen') || '[]');
+      return Array.isArray(a) ? a.map(Number).filter(function (n) { return n >= 0 && n < JOKES.length; }) : [];
+    } catch (e) { return []; }
+  }
+  function markJokeSeen(i) {
+    var a = jokesSeen();
+    if (a.indexOf(i) < 0) a.push(i);
+    LS.set('kidJokesSeen', JSON.stringify(a));
+  }
+  function nextJokeIndex(except) {
+    var seen = jokesSeen();
+    if (seen.length >= JOKES.length) { LS.set('kidJokesSeen', '[]'); seen = []; }
+    var pool = [];
+    for (var i = 0; i < JOKES.length; i++) if (seen.indexOf(i) < 0 && i !== except) pool.push(i);
+    if (!pool.length) {
+      LS.set('kidJokesSeen', '[]');
+      for (var j = 0; j < JOKES.length; j++) if (j !== except) pool.push(j);
+      if (!pool.length) pool = [0];
+    }
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+  function pickJokeOnOpen() {
+    if (!JOKES.length) return;
+    var i = nextJokeIndex();
+    LS.set('kidJoke', String(i));
+    markJokeSeen(i);
+  }
+  function jokeHtml() {
+    if (!S.kid) return '';
+    var i = parseInt(LS.get('kidJoke') || '-1', 10);
+    if (!(i >= 0 && i < JOKES.length)) { i = nextJokeIndex(); LS.set('kidJoke', String(i)); markJokeSeen(i); }
+    var j = JOKES[i];
+    return '<button type="button" class="kidJoke" id="kidJoke" data-act="jokeNext" aria-label="Tap for another joke">' +
+      '<p class="jokeQ">' + esc(j.q) + '</p>' +
+      '<p class="jokeA">' + esc(j.a) + '</p>' +
+      '<p class="jokeHint">Tap for another</p></button>';
+  }
+  function showNextJoke() {
+    var cur = parseInt(LS.get('kidJoke') || '0', 10);
+    var i = nextJokeIndex(cur);
+    LS.set('kidJoke', String(i));
+    markJokeSeen(i);
+    var el = $('kidJoke'); if (!el) return;
+    var j = JOKES[i];
+    var q = el.querySelector('.jokeQ'), a = el.querySelector('.jokeA');
+    if (q) q.textContent = j.q;
+    if (a) a.textContent = j.a;
   }
 
   var FUN_UNITS = [
@@ -1450,7 +1900,407 @@
     { id: "tent", emoji: "⛺", art: "a", one: "tent", many: "tents", gbp: 60 },
     { id: "go_kart", emoji: "🏎️", art: "a", one: "go-kart session", many: "go-kart sessions", gbp: 25 },
     { id: "pony_ride", emoji: "🐎", art: "a", one: "pony ride", many: "pony rides", gbp: 8 },
-    { id: "train_set", emoji: "🚂", art: "a", one: "train set", many: "train sets", gbp: 45 }
+    { id: "train_set", emoji: "🚂", art: "a", one: "train set", many: "train sets", gbp: 45 },
+    { id: "dons_away_top", emoji: "👕", art: "an", one: "Aberdeen FC away top", many: "Aberdeen FC away tops", gbp: 65 },
+    { id: "dons_third_top", emoji: "👕", art: "an", one: "Aberdeen FC third top", many: "Aberdeen FC third tops", gbp: 65 },
+    { id: "dons_beanie", emoji: "🧢", art: "a", one: "Dons beanie", many: "Dons beanies", gbp: 18 },
+    { id: "dons_bobble", emoji: "🧢", art: "a", one: "Dons bobble hat", many: "Dons bobble hats", gbp: 20 },
+    { id: "dons_flag", emoji: "🚩", art: "a", one: "Dons flag", many: "Dons flags", gbp: 12 },
+    { id: "dons_pennant", emoji: "🎏", art: "a", one: "Pittodrie pennant", many: "Pittodrie pennants", gbp: 8 },
+    { id: "dons_programme", emoji: "📰", art: "a", one: "Dons match programme", many: "Dons match programmes", gbp: 4 },
+    { id: "dons_album", emoji: "📔", art: "a", one: "Dons sticker album", many: "Dons sticker albums", gbp: 6 },
+    { id: "shin_pads", emoji: "🦵", art: "a", one: "pair of shin pads", many: "pairs of shin pads", gbp: 12 },
+    { id: "footie_bottle", emoji: "🍾", art: "a", one: "football water bottle", many: "football water bottles", gbp: 8 },
+    { id: "dons_bag", emoji: "🎒", art: "a", one: "Dons backpack", many: "Dons backpacks", gbp: 25 },
+    { id: "dons_mug", emoji: "☕", art: "a", one: "Dons mug", many: "Dons mugs", gbp: 10 },
+    { id: "dons_keyring", emoji: "🔑", art: "a", one: "Dons keyring", many: "Dons keyrings", gbp: 5 },
+    { id: "dons_badge", emoji: "📛", art: "a", one: "Dons pin badge", many: "Dons pin badges", gbp: 3 },
+    { id: "dons_wrist", emoji: "❤️", art: "a", one: "Dons wristband", many: "Dons wristbands", gbp: 2 },
+    { id: "foam_finger", emoji: "👆", art: "a", one: "foam finger", many: "foam fingers", gbp: 8 },
+    { id: "dons_mascot", emoji: "🧸", art: "a", one: "Dons mascot soft toy", many: "Dons mascot soft toys", gbp: 18 },
+    { id: "training_bib", emoji: "🦺", art: "a", one: "training bib", many: "training bibs", gbp: 6 },
+    { id: "footie_socks", emoji: "🧦", art: "a", one: "pair of football socks", many: "pairs of football socks", gbp: 8 },
+    { id: "garden_goal", emoji: "🥅", art: "a", one: "garden goal", many: "garden goals", gbp: 40 },
+    { id: "subbuteo", emoji: "⚽", art: "a", one: "Subbuteo-style set", many: "Subbuteo-style sets", gbp: 30 },
+    { id: "table_footie", emoji: "⚽", art: "a", one: "table football game", many: "table football games", gbp: 45 },
+    { id: "fifa_game", emoji: "🎮", art: "a", one: "football video game", many: "football video games", gbp: 50 },
+    { id: "motd_mag", emoji: "📰", art: "a", one: "Match of the Day magazine", many: "Match of the Day magazines", gbp: 3.5 },
+    { id: "panini_pack", emoji: "📦", art: "a", one: "Panini-style sticker pack", many: "Panini-style sticker packs", gbp: 1.2 },
+    { id: "pittodrie_tour", emoji: "🏟️", art: "a", one: "Pittodrie stadium tour", many: "Pittodrie stadium tours", gbp: 18 },
+    { id: "boot_bag", emoji: "👜", art: "a", one: "boot bag", many: "boot bags", gbp: 15 },
+    { id: "footie_pump", emoji: "🎈", art: "a", one: "football pump", many: "football pumps", gbp: 7 },
+    { id: "cones_pack", emoji: "🚧", art: "a", one: "pack of training cones", many: "packs of training cones", gbp: 10 },
+    { id: "captain_band", emoji: "🛡️", art: "a", one: "captain's armband", many: "captain's armbands", gbp: 5 },
+    { id: "corner_flag", emoji: "🚩", art: "a", one: "corner flag", many: "corner flags", gbp: 12 },
+    { id: "rebounder", emoji: "🥅", art: "a", one: "kick-back rebounder", many: "kick-back rebounders", gbp: 35 },
+    { id: "dons_jacket", emoji: "🧥", art: "a", one: "Dons rain jacket", many: "Dons rain jackets", gbp: 45 },
+    { id: "dons_pyjamas", emoji: "🛏️", art: "a", one: "pair of Dons pyjamas", many: "pairs of Dons pyjamas", gbp: 22 },
+    { id: "scotland_top", emoji: "👕", art: "a", one: "Scotland football top", many: "Scotland football tops", gbp: 70 },
+    { id: "scotland_ticket", emoji: "🎫", art: "a", one: "Scotland match ticket", many: "Scotland match tickets", gbp: 40 },
+    { id: "world_cup_album", emoji: "📔", art: "a", one: "World Cup sticker album", many: "World Cup sticker albums", gbp: 8 },
+    { id: "footie_trophy", emoji: "🏆", art: "a", one: "football trophy", many: "football trophies", gbp: 15 },
+    { id: "dons_calendar", emoji: "📅", art: "an", one: "Aberdeen FC calendar", many: "Aberdeen FC calendars", gbp: 12 },
+    { id: "pitch_side", emoji: "🎟️", art: "a", one: "pitch-side photo", many: "pitch-side photos", gbp: 15 },
+    { id: "keepy_uppy", emoji: "⚽", art: "a", one: "keepy-uppy trainer ball", many: "keepy-uppy trainer balls", gbp: 10 },
+    { id: "indoor_ball", emoji: "🏐", art: "an", one: "indoor football", many: "indoor footballs", gbp: 12 },
+    { id: "mini_goals", emoji: "🥅", art: "a", one: "pair of mini goals", many: "pairs of mini goals", gbp: 25 },
+    { id: "footie_cards", emoji: "🃏", art: "a", one: "pack of football trivia cards", many: "packs of football trivia cards", gbp: 8 },
+    { id: "dons_sticker", emoji: "🌟", art: "a", one: "Dons window sticker", many: "Dons window stickers", gbp: 3 },
+    { id: "jd_tractor", emoji: "🚜", art: "a", one: "John Deere tractor", many: "John Deere tractors", gbp: 22000 },
+    { id: "nh_tractor", emoji: "🚜", art: "a", one: "New Holland tractor", many: "New Holland tractors", gbp: 21000 },
+    { id: "case_tractor", emoji: "🚜", art: "a", one: "Case IH tractor", many: "Case IH tractors", gbp: 21000 },
+    { id: "fendt_tractor", emoji: "🚜", art: "a", one: "Fendt tractor", many: "Fendt tractors", gbp: 25000 },
+    { id: "combine", emoji: "🌾", art: "a", one: "combine harvester", many: "combine harvesters", gbp: 80000 },
+    { id: "farm_trailer", emoji: "🚛", art: "a", one: "farm trailer", many: "farm trailers", gbp: 3500 },
+    { id: "hay_bale", emoji: "🌾", art: "a", one: "hay bale", many: "hay bales", gbp: 40 },
+    { id: "silage_bale", emoji: "🟢", art: "a", one: "silage bale", many: "silage bales", gbp: 35 },
+    { id: "sheep", emoji: "🐑", art: "a", one: "sheep", many: "sheep", gbp: 120 },
+    { id: "lamb", emoji: "🐑", art: "a", one: "lamb", many: "lambs", gbp: 80 },
+    { id: "pig", emoji: "🐷", art: "a", one: "pig", many: "pigs", gbp: 150 },
+    { id: "piglet", emoji: "🐷", art: "a", one: "piglet", many: "piglets", gbp: 60 },
+    { id: "chicken", emoji: "🐔", art: "a", one: "chicken", many: "chickens", gbp: 12 },
+    { id: "cockerel", emoji: "🐓", art: "a", one: "cockerel", many: "cockerels", gbp: 15 },
+    { id: "duck_farm", emoji: "🦆", art: "a", one: "farm duck", many: "farm ducks", gbp: 18 },
+    { id: "goat", emoji: "🐐", art: "a", one: "goat", many: "goats", gbp: 100 },
+    { id: "calf", emoji: "🐮", art: "a", one: "calf", many: "calves", gbp: 250 },
+    { id: "farm_quad", emoji: "🏍️", art: "a", one: "farm quad bike", many: "farm quad bikes", gbp: 2800 },
+    { id: "wellies", emoji: "👢", art: "a", one: "pair of wellies", many: "pairs of wellies", gbp: 20 },
+    { id: "flat_cap", emoji: "🧢", art: "a", one: "flat cap", many: "flat caps", gbp: 15 },
+    { id: "toy_barn", emoji: "🏚️", art: "a", one: "toy barn", many: "toy barns", gbp: 35 },
+    { id: "toy_combine", emoji: "🌾", art: "a", one: "toy combine harvester", many: "toy combine harvesters", gbp: 30 },
+    { id: "chicken_coop", emoji: "🏠", art: "a", one: "chicken coop", many: "chicken coops", gbp: 150 },
+    { id: "sheepdog", emoji: "🐕", art: "a", one: "sheepdog", many: "sheepdogs", gbp: 700 },
+    { id: "scarecrow", emoji: "🎃", art: "a", one: "scarecrow", many: "scarecrows", gbp: 20 },
+    { id: "wheelbarrow", emoji: "🛒", art: "a", one: "wheelbarrow", many: "wheelbarrows", gbp: 45 },
+    { id: "tractor_keyring", emoji: "🔑", art: "a", one: "tractor keyring", many: "tractor keyrings", gbp: 5 },
+    { id: "highland_show", emoji: "🎫", art: "a", one: "Royal Highland Show ticket", many: "Royal Highland Show tickets", gbp: 38 },
+    { id: "agri_show", emoji: "🎟️", art: "an", one: "agricultural show ticket", many: "agricultural show tickets", gbp: 15 },
+    { id: "potato_sack", emoji: "🥔", art: "a", one: "sack of tatties", many: "sacks of tatties", gbp: 8 },
+    { id: "neeps", emoji: "🥕", art: "a", one: "bag of neeps", many: "bags of neeps", gbp: 2.5 },
+    { id: "straw_bale", emoji: "🌾", art: "a", one: "straw bale", many: "straw bales", gbp: 8 },
+    { id: "toy_jd", emoji: "🚜", art: "a", one: "John Deere toy tractor", many: "John Deere toy tractors", gbp: 28 },
+    { id: "toy_nh", emoji: "🚜", art: "a", one: "New Holland toy tractor", many: "New Holland toy tractors", gbp: 28 },
+    { id: "farm_fence", emoji: "🪵", art: "a", one: "pack of toy farm fences", many: "packs of toy farm fences", gbp: 10 },
+    { id: "feed_bucket", emoji: "🪣", art: "a", one: "feed bucket", many: "feed buckets", gbp: 8 },
+    { id: "milk_churn", emoji: "🥛", art: "a", one: "milk churn", many: "milk churns", gbp: 25 },
+    { id: "pony_stable", emoji: "🏠", art: "a", one: "toy stable", many: "toy stables", gbp: 40 },
+    { id: "farm_open", emoji: "🎟️", art: "an", one: "open farm day ticket", many: "open farm day tickets", gbp: 12 },
+    { id: "hayride", emoji: "🚜", art: "a", one: "hayride", many: "hayrides", gbp: 8 },
+    { id: "corn_maze", emoji: "🌽", art: "a", one: "corn maze ticket", many: "corn maze tickets", gbp: 10 },
+    { id: "tractor_calendar", emoji: "📅", art: "a", one: "tractor calendar", many: "tractor calendars", gbp: 10 },
+    { id: "farm_hoodie", emoji: "🧥", art: "a", one: "farm hoodie", many: "farm hoodies", gbp: 30 },
+    { id: "cat", emoji: "🐱", art: "a", one: "cat", many: "cats", gbp: 50 },
+    { id: "border_collie", emoji: "🐕", art: "a", one: "Border Collie", many: "Border Collies", gbp: 800 },
+    { id: "guinea_pig", emoji: "🐹", art: "a", one: "guinea pig", many: "guinea pigs", gbp: 25 },
+    { id: "gerbil", emoji: "🐹", art: "a", one: "gerbil", many: "gerbils", gbp: 15 },
+    { id: "tortoise", emoji: "🐢", art: "a", one: "tortoise", many: "tortoises", gbp: 80 },
+    { id: "gecko", emoji: "🦎", art: "a", one: "gecko", many: "geckos", gbp: 40 },
+    { id: "frog", emoji: "🐸", art: "a", one: "frog", many: "frogs", gbp: 15 },
+    { id: "owl_soft", emoji: "🦉", art: "an", one: "owl soft toy", many: "owl soft toys", gbp: 14 },
+    { id: "hedgehog_soft", emoji: "🦔", art: "a", one: "hedgehog soft toy", many: "hedgehog soft toys", gbp: 12 },
+    { id: "fox_soft", emoji: "🦊", art: "a", one: "fox soft toy", many: "fox soft toys", gbp: 14 },
+    { id: "red_squirrel", emoji: "🐿️", art: "a", one: "red squirrel soft toy", many: "red squirrel soft toys", gbp: 12 },
+    { id: "otter_soft", emoji: "🦦", art: "an", one: "otter soft toy", many: "otter soft toys", gbp: 14 },
+    { id: "seal_soft", emoji: "🦭", art: "a", one: "seal soft toy", many: "seal soft toys", gbp: 14 },
+    { id: "puffin_soft", emoji: "🐦", art: "a", one: "puffin soft toy", many: "puffin soft toys", gbp: 12 },
+    { id: "penguin_soft", emoji: "🐧", art: "a", one: "penguin soft toy", many: "penguin soft toys", gbp: 14 },
+    { id: "elephant_soft", emoji: "🐘", art: "an", one: "elephant soft toy", many: "elephant soft toys", gbp: 16 },
+    { id: "giraffe_soft", emoji: "🦒", art: "a", one: "giraffe soft toy", many: "giraffe soft toys", gbp: 16 },
+    { id: "panda_soft", emoji: "🐼", art: "a", one: "panda soft toy", many: "panda soft toys", gbp: 16 },
+    { id: "koala_soft", emoji: "🐨", art: "a", one: "koala soft toy", many: "koala soft toys", gbp: 14 },
+    { id: "meerkat_soft", emoji: "🦫", art: "a", one: "meerkat soft toy", many: "meerkat soft toys", gbp: 14 },
+    { id: "llama_soft", emoji: "🦙", art: "a", one: "llama soft toy", many: "llama soft toys", gbp: 14 },
+    { id: "alpaca_soft", emoji: "🦙", art: "an", one: "alpaca soft toy", many: "alpaca soft toys", gbp: 14 },
+    { id: "reindeer_soft", emoji: "🦌", art: "a", one: "reindeer soft toy", many: "reindeer soft toys", gbp: 15 },
+    { id: "dolphin_soft", emoji: "🐬", art: "a", one: "dolphin soft toy", many: "dolphin soft toys", gbp: 14 },
+    { id: "whale_soft", emoji: "🐋", art: "a", one: "whale soft toy", many: "whale soft toys", gbp: 18 },
+    { id: "butterfly_net", emoji: "🦋", art: "a", one: "butterfly-watching kit", many: "butterfly-watching kits", gbp: 10 },
+    { id: "ladybird_kit", emoji: "🐞", art: "a", one: "minibeast kit", many: "minibeast kits", gbp: 8 },
+    { id: "bee_hotel", emoji: "🐝", art: "a", one: "bee hotel", many: "bee hotels", gbp: 15 },
+    { id: "wildlife_park", emoji: "🎟️", art: "a", one: "Highland Wildlife Park ticket", many: "Highland Wildlife Park tickets", gbp: 22 },
+    { id: "sspca_toy", emoji: "🧸", art: "an", one: "animal-rescue soft toy", many: "animal-rescue soft toys", gbp: 12 },
+    { id: "aquarium", emoji: "🐠", art: "an", one: "aquarium trip", many: "aquarium trips", gbp: 18 },
+    { id: "sea_life", emoji: "🦈", art: "a", one: "sea-life centre ticket", many: "sea-life centre tickets", gbp: 20 },
+    { id: "pony_groom", emoji: "🐎", art: "a", one: "pony grooming session", many: "pony grooming sessions", gbp: 15 },
+    { id: "bird_feeder", emoji: "🐦", art: "a", one: "bird feeder", many: "bird feeders", gbp: 12 },
+    { id: "binoculars_birds", emoji: "🔭", art: "a", one: "pair of birdwatching binoculars", many: "pairs of birdwatching binoculars", gbp: 35 },
+    { id: "hamster_cage", emoji: "🏠", art: "a", one: "hamster cage", many: "hamster cages", gbp: 30 },
+    { id: "fish_tank", emoji: "🐠", art: "a", one: "fish tank", many: "fish tanks", gbp: 40 },
+    { id: "dog_bed", emoji: "🛏️", art: "a", one: "dog bed", many: "dog beds", gbp: 30 },
+    { id: "irnbru_lolly", emoji: "🧡", art: "an", one: "Irn-Bru ice lolly", many: "Irn-Bru ice lollies", gbp: 1.2 },
+    { id: "irnbru_slush", emoji: "🧃", art: "an", one: "Irn-Bru slush", many: "Irn-Bru slushes", gbp: 2.5 },
+    { id: "butteries", emoji: "🥐", art: "a", one: "bag of butteries", many: "bags of butteries", gbp: 3 },
+    { id: "lorne_roll", emoji: "🥪", art: "a", one: "square-sausage roll", many: "square-sausage rolls", gbp: 3.5 },
+    { id: "macaroni_pie", emoji: "🥧", art: "a", one: "macaroni pie", many: "macaroni pies", gbp: 2.5 },
+    { id: "bridie", emoji: "🥟", art: "a", one: "bridie", many: "bridies", gbp: 2.2 },
+    { id: "stovies", emoji: "🍲", art: "a", one: "plate of stovies", many: "plates of stovies", gbp: 7 },
+    { id: "tattie_scone", emoji: "🥔", art: "a", one: "tattie scone", many: "tattie scones", gbp: 0.6 },
+    { id: "scotch_egg", emoji: "🥚", art: "a", one: "Scotch egg", many: "Scotch eggs", gbp: 2 },
+    { id: "clootie", emoji: "🍮", art: "a", one: "clootie dumpling", many: "clootie dumplings", gbp: 4 },
+    { id: "snowball_cake", emoji: "🧁", art: "a", one: "Tunnock's snowball", many: "Tunnock's snowballs", gbp: 0.6 },
+    { id: "millionaire", emoji: "🍫", art: "a", one: "millionaire shortbread", many: "millionaire shortbreads", gbp: 2.5 },
+    { id: "empire_biscuit", emoji: "🍪", art: "an", one: "empire biscuit", many: "empire biscuits", gbp: 1.5 },
+    { id: "soor_ploom", emoji: "🍬", art: "a", one: "bag of soor plooms", many: "bags of soor plooms", gbp: 1.5 },
+    { id: "cola_cubes", emoji: "🍬", art: "a", one: "bag of cola cubes", many: "bags of cola cubes", gbp: 1.5 },
+    { id: "flying_saucer", emoji: "🛸", art: "a", one: "packet of flying saucers", many: "packets of flying saucers", gbp: 1 },
+    { id: "lucky_bag", emoji: "🎒", art: "a", one: "lucky bag", many: "lucky bags", gbp: 1.5 },
+    { id: "red_lemonade", emoji: "🥤", art: "a", one: "red lemonade", many: "red lemonades", gbp: 1.2 },
+    { id: "chippy_sauce", emoji: "🍟", art: "a", one: "chippy supper with sauce", many: "chippy suppers with sauce", gbp: 9 },
+    { id: "tartan_blanket", emoji: "🧶", art: "a", one: "tartan blanket", many: "tartan blankets", gbp: 35 },
+    { id: "tartan_bunnet", emoji: "🧢", art: "a", one: "tartan bunnet", many: "tartan bunnets", gbp: 15 },
+    { id: "tartan_socks", emoji: "🧦", art: "a", one: "pair of tartan socks", many: "pairs of tartan socks", gbp: 8 },
+    { id: "sporran_toy", emoji: "👜", art: "a", one: "toy sporran", many: "toy sporrans", gbp: 12 },
+    { id: "ceilidh_ticket", emoji: "🎟️", art: "a", one: "ceilidh ticket", many: "ceilidh tickets", gbp: 12 },
+    { id: "highland_shoes", emoji: "👟", art: "a", one: "pair of highland dancing shoes", many: "pairs of highland dancing shoes", gbp: 40 },
+    { id: "highland_games", emoji: "🎫", art: "a", one: "Highland games ticket", many: "Highland games tickets", gbp: 15 },
+    { id: "caber_toy", emoji: "🪵", art: "a", one: "toy caber", many: "toy cabers", gbp: 10 },
+    { id: "wellie_wang", emoji: "👢", art: "a", one: "wellie-wanging go", many: "wellie-wanging goes", gbp: 3 },
+    { id: "nessie_mug", emoji: "☕", art: "a", one: "Nessie mug", many: "Nessie mugs", gbp: 10 },
+    { id: "nessie_globe", emoji: "🔮", art: "a", one: "Nessie snow globe", many: "Nessie snow globes", gbp: 12 },
+    { id: "tin_whistle", emoji: "🎶", art: "a", one: "tin whistle", many: "tin whistles", gbp: 8 },
+    { id: "chanter", emoji: "🎶", art: "a", one: "practice chanter", many: "practice chanters", gbp: 25 },
+    { id: "accordion", emoji: "🪗", art: "an", one: "accordion", many: "accordions", gbp: 200 },
+    { id: "skye_trip", emoji: "🚌", art: "a", one: "trip to Skye", many: "trips to Skye", gbp: 40 },
+    { id: "nessie_cruise", emoji: "🚢", art: "a", one: "Loch Ness cruise", many: "Loch Ness cruises", gbp: 22 },
+    { id: "cairngorm_funi", emoji: "🚠", art: "a", one: "Cairngorm funicular ticket", many: "Cairngorm funicular tickets", gbp: 18 },
+    { id: "jacobite", emoji: "🚂", art: "a", one: "Jacobite steam-train ticket", many: "Jacobite steam-train tickets", gbp: 55 },
+    { id: "science_centre", emoji: "🎟️", art: "a", one: "Glasgow Science Centre ticket", many: "Glasgow Science Centre tickets", gbp: 16 },
+    { id: "dynamic_earth", emoji: "🌍", art: "an", one: "Our Dynamic Earth ticket", many: "Our Dynamic Earth tickets", gbp: 18 },
+    { id: "codonas", emoji: "🎡", art: "a", one: "Codona's wristband", many: "Codona's wristbands", gbp: 25 },
+    { id: "aberdeen_beach", emoji: "🏖️", art: "an", one: "Aberdeen beach day", many: "Aberdeen beach days", gbp: 10 },
+    { id: "rowie_roll", emoji: "🥐", art: "a", one: "rowie and square sausage", many: "rowies and square sausage", gbp: 4 },
+    { id: "irnbru_bar", emoji: "🍫", art: "an", one: "Irn-Bru bar", many: "Irn-Bru bars", gbp: 1 },
+    { id: "tunnocks_hamper", emoji: "🧺", art: "a", one: "Tunnock's hamper", many: "Tunnock's hampers", gbp: 20 },
+    { id: "kilt_own", emoji: "🧶", art: "a", one: "wee kilt", many: "wee kilts", gbp: 80 },
+    { id: "thistle_badge", emoji: "🟣", art: "a", one: "thistle badge", many: "thistle badges", gbp: 4 },
+    { id: "edin_zoo", emoji: "🎟️", art: "an", one: "Edinburgh Zoo ticket", many: "Edinburgh Zoo tickets", gbp: 24 },
+    { id: "stirling_castle", emoji: "🏰", art: "a", one: "Stirling Castle ticket", many: "Stirling Castle tickets", gbp: 18 },
+    { id: "homer_plush", emoji: "🧸", art: "a", one: "Homer soft toy", many: "Homer soft toys", gbp: 16 },
+    { id: "bart_figure", emoji: "🛹", art: "a", one: "Bart figure", many: "Bart figures", gbp: 15 },
+    { id: "lisa_sax", emoji: "🎷", art: "a", one: "Lisa-style saxophone", many: "Lisa-style saxophones", gbp: 40 },
+    { id: "maggie_dummy", emoji: "👶", art: "a", one: "Maggie-style dummy", many: "Maggie-style dummies", gbp: 4 },
+    { id: "marge_hairband", emoji: "💙", art: "a", one: "Marge-style hairband", many: "Marge-style hairbands", gbp: 6 },
+    { id: "santa_helper", emoji: "🐶", art: "a", one: "Santa's Little Helper toy", many: "Santa's Little Helper toys", gbp: 14 },
+    { id: "snowball_cat", emoji: "🐱", art: "a", one: "Snowball cat toy", many: "Snowball cat toys", gbp: 12 },
+    { id: "radioactive_comic", emoji: "📘", art: "a", one: "Radioactive Man comic", many: "Radioactive Man comics", gbp: 8 },
+    { id: "itchy_toy", emoji: "🐭", art: "an", one: "Itchy toy", many: "Itchy toys", gbp: 12 },
+    { id: "scratchy_toy", emoji: "🐱", art: "a", one: "Scratchy toy", many: "Scratchy toys", gbp: 12 },
+    { id: "kang_figure", emoji: "👽", art: "a", one: "Kang figure", many: "Kang figures", gbp: 18 },
+    { id: "kodos_figure", emoji: "👽", art: "a", one: "Kodos figure", many: "Kodos figures", gbp: 18 },
+    { id: "ralph_figure", emoji: "🧸", art: "a", one: "Ralph figure", many: "Ralph figures", gbp: 15 },
+    { id: "ned_figure", emoji: "😉", art: "a", one: "Ned Flanders figure", many: "Ned Flanders figures", gbp: 15 },
+    { id: "simpsons_house", emoji: "🏠", art: "a", one: "Simpsons house playset", many: "Simpsons house playsets", gbp: 50 },
+    { id: "couch_play", emoji: "🛋️", art: "a", one: "couch playset", many: "couch playsets", gbp: 25 },
+    { id: "kwik_e_play", emoji: "🏪", art: "a", one: "Kwik-E-Mart playset", many: "Kwik-E-Mart playsets", gbp: 45 },
+    { id: "plant_play", emoji: "🏭", art: "a", one: "power-plant playset", many: "power-plant playsets", gbp: 40 },
+    { id: "school_bus_toy", emoji: "🚌", art: "a", one: "school-bus toy", many: "school-bus toys", gbp: 20 },
+    { id: "donut_sprinkles", emoji: "🍩", art: "a", one: "tub of donut sprinkles", many: "tubs of donut sprinkles", gbp: 2 },
+    { id: "squishee_cup", emoji: "🥤", art: "a", one: "Squishee cup", many: "Squishee cups", gbp: 8 },
+    { id: "krusty_merch", emoji: "🤡", art: "a", one: "Krusty merch pack", many: "Krusty merch packs", gbp: 12 },
+    { id: "itchy_game", emoji: "🎮", art: "an", one: "Itchy & Scratchy game", many: "Itchy & Scratchy games", gbp: 20 },
+    { id: "chalkboard", emoji: "📋", art: "a", one: "Bart-style chalkboard", many: "Bart-style chalkboards", gbp: 10 },
+    { id: "donut_phone", emoji: "📱", art: "a", one: "donut toy phone", many: "donut toy phones", gbp: 12 },
+    { id: "homer_mug", emoji: "☕", art: "a", one: "Homer mug", many: "Homer mugs", gbp: 10 },
+    { id: "bart_tee", emoji: "👕", art: "a", one: "Bart T-shirt", many: "Bart T-shirts", gbp: 18 },
+    { id: "lisa_book", emoji: "📖", art: "a", one: "Lisa-style homework book", many: "Lisa-style homework books", gbp: 6 },
+    { id: "milhouse_fig", emoji: "🤓", art: "a", one: "Milhouse figure", many: "Milhouse figures", gbp: 15 },
+    { id: "wiggum_fig", emoji: "👮", art: "a", one: "Chief Wiggum figure", many: "Chief Wiggum figures", gbp: 15 },
+    { id: "willie_fig", emoji: "🧹", art: "a", one: "Groundskeeper Willie figure", many: "Groundskeeper Willie figures", gbp: 15 },
+    { id: "apu_fig", emoji: "🏪", art: "an", one: "Apu figure", many: "Apu figures", gbp: 15 },
+    { id: "nelson_fig", emoji: "😄", art: "a", one: "Nelson figure", many: "Nelson figures", gbp: 15 },
+    { id: "simpsons_cards", emoji: "🃏", art: "a", one: "Simpsons card game", many: "Simpsons card games", gbp: 12 },
+    { id: "simpsons_puzzle", emoji: "🧩", art: "a", one: "Simpsons puzzle", many: "Simpsons puzzles", gbp: 14 },
+    { id: "donut_slippers", emoji: "🍩", art: "a", one: "pair of donut slippers", many: "pairs of donut slippers", gbp: 16 },
+    { id: "couch_gag_book", emoji: "📕", art: "a", one: "couch-gag picture book", many: "couch-gag picture books", gbp: 10 },
+    { id: "playdoh", emoji: "🎨", art: "a", one: "Play-Doh tub set", many: "Play-Doh tub sets", gbp: 10 },
+    { id: "slime_tub", emoji: "🟢", art: "a", one: "tub of slime", many: "tubs of slime", gbp: 5 },
+    { id: "slinky", emoji: "🌀", art: "a", one: "Slinky", many: "Slinkies", gbp: 6 },
+    { id: "beyblade", emoji: "🌀", art: "a", one: "spinning-top battle set", many: "spinning-top battle sets", gbp: 15 },
+    { id: "pokemon_pack", emoji: "📦", art: "a", one: "Pokémon-style card pack", many: "Pokémon-style card packs", gbp: 4 },
+    { id: "pokemon_tin", emoji: "🗃️", art: "a", one: "Pokémon-style card tin", many: "Pokémon-style card tins", gbp: 12 },
+    { id: "squishmallow", emoji: "🧸", art: "a", one: "squishy plush", many: "squishy plushes", gbp: 18 },
+    { id: "fidget", emoji: "🌀", art: "a", one: "fidget toy", many: "fidget toys", gbp: 4 },
+    { id: "kinetic_sand", emoji: "🏖️", art: "a", one: "tub of kinetic sand", many: "tubs of kinetic sand", gbp: 12 },
+    { id: "marble_run", emoji: "🔵", art: "a", one: "marble run", many: "marble runs", gbp: 25 },
+    { id: "jigsaw_500", emoji: "🧩", art: "a", one: "500-piece jigsaw", many: "500-piece jigsaws", gbp: 12 },
+    { id: "magic_set", emoji: "🎩", art: "a", one: "magic set", many: "magic sets", gbp: 18 },
+    { id: "science_kit", emoji: "🔬", art: "a", one: "science kit", many: "science kits", gbp: 20 },
+    { id: "microscope", emoji: "🔬", art: "a", one: "toy microscope", many: "toy microscopes", gbp: 25 },
+    { id: "walkie_talkies", emoji: "📡", art: "a", one: "pair of walkie-talkies", many: "pairs of walkie-talkies", gbp: 22 },
+    { id: "kendama", emoji: "🎯", art: "a", one: "kendama", many: "kendamas", gbp: 12 },
+    { id: "hacky_sack", emoji: "⚽", art: "a", one: "hacky sack", many: "hacky sacks", gbp: 5 },
+    { id: "pogo_stick", emoji: "🦘", art: "a", one: "pogo stick", many: "pogo sticks", gbp: 30 },
+    { id: "stilts", emoji: "🦵", art: "a", one: "pair of stilts", many: "pairs of stilts", gbp: 20 },
+    { id: "roller_skates", emoji: "🛼", art: "a", one: "pair of roller skates", many: "pairs of roller skates", gbp: 35 },
+    { id: "ice_skates", emoji: "⛸️", art: "a", one: "pair of ice skates", many: "pairs of ice skates", gbp: 40 },
+    { id: "helmet", emoji: "⛑️", art: "a", one: "bike helmet", many: "bike helmets", gbp: 25 },
+    { id: "knee_pads", emoji: "🛡️", art: "a", one: "pair of knee pads", many: "pairs of knee pads", gbp: 12 },
+    { id: "uno", emoji: "🃏", art: "a", one: "pack of UNO", many: "packs of UNO", gbp: 8 },
+    { id: "dobble", emoji: "🟡", art: "a", one: "Dobble-style game", many: "Dobble-style games", gbp: 12 },
+    { id: "guess_who", emoji: "❓", art: "a", one: "Guess Who-style game", many: "Guess Who-style games", gbp: 15 },
+    { id: "connect4", emoji: "🔴", art: "a", one: "Connect 4-style game", many: "Connect 4-style games", gbp: 12 },
+    { id: "jenga", emoji: "🪵", art: "a", one: "Jenga-style tower game", many: "Jenga-style tower games", gbp: 12 },
+    { id: "hungry_hippos", emoji: "🦛", art: "a", one: "Hungry Hippos-style game", many: "Hungry Hippos-style games", gbp: 16 },
+    { id: "kerplunk", emoji: "🟢", art: "a", one: "Kerplunk-style game", many: "Kerplunk-style games", gbp: 14 },
+    { id: "twister", emoji: "🌀", art: "a", one: "Twister-style mat game", many: "Twister-style mat games", gbp: 16 },
+    { id: "mouse_trap", emoji: "🐭", art: "a", one: "Mouse Trap-style game", many: "Mouse Trap-style games", gbp: 20 },
+    { id: "playmobil", emoji: "🧱", art: "a", one: "Playmobil-style set", many: "Playmobil-style sets", gbp: 25 },
+    { id: "sylvanian", emoji: "🏠", art: "a", one: "Sylvanian-style family set", many: "Sylvanian-style family sets", gbp: 25 },
+    { id: "rubiks", emoji: "🧊", art: "a", one: "Rubik's Cube-style puzzle", many: "Rubik's Cube-style puzzles", gbp: 10 },
+    { id: "etch_a", emoji: "✏️", art: "an", one: "Etch A Sketch-style board", many: "Etch A Sketch-style boards", gbp: 15 },
+    { id: "magformers", emoji: "🔷", art: "a", one: "magnetic tiles set", many: "magnetic tiles sets", gbp: 30 },
+    { id: "plusplus", emoji: "➕", art: "a", one: "Plus-Plus-style set", many: "Plus-Plus-style sets", gbp: 15 },
+    { id: "knex", emoji: "🔧", art: "a", one: "KNex-style building set", many: "KNex-style building sets", gbp: 22 },
+    { id: "meccano", emoji: "🔩", art: "a", one: "Meccano-style kit", many: "Meccano-style kits", gbp: 25 },
+    { id: "scalextric", emoji: "🏎️", art: "a", one: "slot-car set", many: "slot-car sets", gbp: 60 },
+    { id: "robot_kit", emoji: "🤖", art: "a", one: "robot kit", many: "robot kits", gbp: 35 },
+    { id: "coding_robot", emoji: "🤖", art: "a", one: "coding robot", many: "coding robots", gbp: 50 },
+    { id: "jump_rope", emoji: "🪢", art: "a", one: "skipping rope", many: "skipping ropes", gbp: 6 },
+    { id: "hula_hoop", emoji: "⭕", art: "a", one: "hula hoop", many: "hula hoops", gbp: 8 },
+    { id: "frisbee", emoji: "🥏", art: "a", one: "frisbee", many: "frisbees", gbp: 8 },
+    { id: "water_balloons", emoji: "💧", art: "a", one: "pack of water balloons", many: "packs of water balloons", gbp: 3 },
+    { id: "sand_set", emoji: "🏖️", art: "a", one: "sandcastle set", many: "sandcastle sets", gbp: 10 },
+    { id: "kaleidoscope", emoji: "🌈", art: "a", one: "kaleidoscope", many: "kaleidoscopes", gbp: 7 },
+    { id: "sticker_book", emoji: "📔", art: "a", one: "sticker book", many: "sticker books", gbp: 6 },
+    { id: "colouring", emoji: "🖍️", art: "a", one: "colouring book and pens", many: "colouring books and pens", gbp: 8 },
+    { id: "paint_set", emoji: "🎨", art: "a", one: "paint set", many: "paint sets", gbp: 12 },
+    { id: "bead_kit", emoji: "📿", art: "a", one: "bead kit", many: "bead kits", gbp: 10 },
+    { id: "puppet", emoji: "🧦", art: "a", one: "sock puppet kit", many: "sock puppet kits", gbp: 6 },
+    { id: "teddy_picnic", emoji: "🧺", art: "a", one: "teddy bears’ picnic set", many: "teddy bears’ picnic sets", gbp: 15 },
+    { id: "jammy_dodger", emoji: "🍪", art: "a", one: "Jammy Dodger", many: "Jammy Dodgers", gbp: 0.6 },
+    { id: "custard_cream", emoji: "🍪", art: "a", one: "custard cream", many: "custard creams", gbp: 0.4 },
+    { id: "jaffa_cake", emoji: "🍊", art: "a", one: "Jaffa Cake", many: "Jaffa Cakes", gbp: 0.5 },
+    { id: "wagon_wheel", emoji: "🍪", art: "a", one: "Wagon Wheel", many: "Wagon Wheels", gbp: 0.7 },
+    { id: "penguin_bar", emoji: "🐧", art: "a", one: "Penguin biscuit", many: "Penguin biscuits", gbp: 0.6 },
+    { id: "kitkat", emoji: "🍫", art: "a", one: "KitKat", many: "KitKats", gbp: 0.8 },
+    { id: "freddo", emoji: "🐸", art: "a", one: "Freddo", many: "Freddos", gbp: 0.4 },
+    { id: "curly_wurly", emoji: "🍫", art: "a", one: "Curly Wurly", many: "Curly Wurlys", gbp: 0.5 },
+    { id: "flake99", emoji: "🍦", art: "a", one: "99 flake", many: "99 flakes", gbp: 2.5 },
+    { id: "screwball", emoji: "🍦", art: "a", one: "screwball ice cream", many: "screwball ice creams", gbp: 2 },
+    { id: "calippo", emoji: "🧃", art: "a", one: "Calippo", many: "Calippos", gbp: 1.5 },
+    { id: "solero", emoji: "🥭", art: "a", one: "Solero", many: "Soleros", gbp: 1.8 },
+    { id: "ice_lolly", emoji: "🍭", art: "an", one: "ice lolly", many: "ice lollies", gbp: 1 },
+    { id: "sausage_roll", emoji: "🥐", art: "a", one: "sausage roll", many: "sausage rolls", gbp: 1.8 },
+    { id: "steak_pie", emoji: "🥧", art: "a", one: "steak pie", many: "steak pies", gbp: 3.5 },
+    { id: "beans_toast", emoji: "🍞", art: "a", one: "plate of beans on toast", many: "plates of beans on toast", gbp: 3 },
+    { id: "toastie", emoji: "🥪", art: "a", one: "toastie", many: "toasties", gbp: 4 },
+    { id: "pancake", emoji: "🥞", art: "a", one: "stack of pancakes", many: "stacks of pancakes", gbp: 5 },
+    { id: "crumpet", emoji: "🍞", art: "a", one: "crumpet with butter", many: "crumpets with butter", gbp: 1 },
+    { id: "hot_choc", emoji: "☕", art: "a", one: "hot chocolate", many: "hot chocolates", gbp: 3 },
+    { id: "marshmallow", emoji: "🍬", art: "a", one: "bag of marshmallows", many: "bags of marshmallows", gbp: 1.5 },
+    { id: "popcorn", emoji: "🍿", art: "a", one: "tub of popcorn", many: "tubs of popcorn", gbp: 3 },
+    { id: "candy_floss", emoji: "🍭", art: "a", one: "candy floss", many: "candy flosses", gbp: 3 },
+    { id: "toffee_apple", emoji: "🍏", art: "a", one: "toffee apple", many: "toffee apples", gbp: 2.5 },
+    { id: "fudge_bag", emoji: "🍬", art: "a", one: "bag of fudge", many: "bags of fudge", gbp: 3 },
+    { id: "jelly_bag", emoji: "🍇", art: "a", one: "bag of jelly sweets", many: "bags of jelly sweets", gbp: 1.5 },
+    { id: "ice_pole", emoji: "🧊", art: "an", one: "ice pole", many: "ice poles", gbp: 0.5 },
+    { id: "cupcake", emoji: "🧁", art: "a", one: "cupcake", many: "cupcakes", gbp: 2 },
+    { id: "traybake", emoji: "🍰", art: "a", one: "traybake slice", many: "traybake slices", gbp: 2 },
+    { id: "pokey_hat", emoji: "🍦", art: "a", one: "pokey hat", many: "pokey hats", gbp: 2 },
+    { id: "waffle", emoji: "🧇", art: "a", one: "waffle", many: "waffles", gbp: 4 },
+    { id: "churros", emoji: "🍩", art: "a", one: "portion of churros", many: "portions of churros", gbp: 4 },
+    { id: "belgian_bun", emoji: "🧁", art: "a", one: "Belgian bun", many: "Belgian buns", gbp: 2 },
+    { id: "cream_bun", emoji: "🧁", art: "a", one: "cream bun", many: "cream buns", gbp: 2 },
+    { id: "biscuit_tin", emoji: "🍪", art: "a", one: "family biscuit tin", many: "family biscuit tins", gbp: 5 },
+    { id: "selection_box", emoji: "🎁", art: "a", one: "selection box", many: "selection boxes", gbp: 6 },
+    { id: "advent_cal", emoji: "📅", art: "an", one: "advent calendar", many: "advent calendars", gbp: 5 },
+    { id: "hot_cross", emoji: "🧁", art: "a", one: "hot cross bun", many: "hot cross buns", gbp: 0.7 },
+    { id: "ginger_bread", emoji: "🍪", art: "a", one: "gingerbread person", many: "gingerbread people", gbp: 1.5 },
+    { id: "ice_cream_van", emoji: "🚚", art: "an", one: "ice-cream van treat", many: "ice-cream van treats", gbp: 2.5 },
+    { id: "bus_ticket", emoji: "🚌", art: "a", one: "bus ticket", many: "bus tickets", gbp: 2.5 },
+    { id: "train_ticket", emoji: "🚆", art: "a", one: "train ticket", many: "train tickets", gbp: 12 },
+    { id: "plane_ticket", emoji: "✈️", art: "a", one: "plane ticket", many: "plane tickets", gbp: 80 },
+    { id: "ferry_ticket", emoji: "⛴️", art: "a", one: "ferry ticket", many: "ferry tickets", gbp: 25 },
+    { id: "double_decker", emoji: "🚌", art: "a", one: "double-decker bus toy", many: "double-decker bus toys", gbp: 18 },
+    { id: "steam_train", emoji: "🚂", art: "a", one: "steam-train ride", many: "steam-train rides", gbp: 18 },
+    { id: "model_railway", emoji: "🛤️", art: "a", one: "model railway set", many: "model railway sets", gbp: 70 },
+    { id: "heli_toy", emoji: "🚁", art: "a", one: "toy helicopter", many: "toy helicopters", gbp: 16 },
+    { id: "aeroplane_toy", emoji: "✈️", art: "a", one: "toy aeroplane", many: "toy aeroplanes", gbp: 15 },
+    { id: "fire_engine", emoji: "🚒", art: "a", one: "toy fire engine", many: "toy fire engines", gbp: 18 },
+    { id: "ambulance_toy", emoji: "🚑", art: "a", one: "toy ambulance", many: "toy ambulances", gbp: 16 },
+    { id: "police_car", emoji: "🚓", art: "a", one: "toy police car", many: "toy police cars", gbp: 16 },
+    { id: "bin_lorry", emoji: "🚛", art: "a", one: "toy bin lorry", many: "toy bin lorries", gbp: 16 },
+    { id: "digger", emoji: "🚜", art: "a", one: "toy digger", many: "toy diggers", gbp: 18 },
+    { id: "bulldozer", emoji: "🚧", art: "a", one: "toy bulldozer", many: "toy bulldozers", gbp: 18 },
+    { id: "cement_mixer", emoji: "🚚", art: "a", one: "toy cement mixer", many: "toy cement mixers", gbp: 16 },
+    { id: "crane_toy", emoji: "🏗️", art: "a", one: "toy crane", many: "toy cranes", gbp: 20 },
+    { id: "forklift_toy", emoji: "🏭", art: "a", one: "toy forklift", many: "toy forklifts", gbp: 15 },
+    { id: "camper_van", emoji: "🚐", art: "a", one: "camper-van weekend", many: "camper-van weekends", gbp: 150 },
+    { id: "caravan", emoji: "🏕️", art: "a", one: "caravan holiday", many: "caravan holidays", gbp: 200 },
+    { id: "canoe", emoji: "🛶", art: "a", one: "canoe session", many: "canoe sessions", gbp: 20 },
+    { id: "kayak", emoji: "🛶", art: "a", one: "kayak session", many: "kayak sessions", gbp: 22 },
+    { id: "paddleboard", emoji: "🏄", art: "a", one: "paddleboard session", many: "paddleboard sessions", gbp: 20 },
+    { id: "unicycle", emoji: "🚲", art: "a", one: "unicycle", many: "unicycles", gbp: 50 },
+    { id: "trike", emoji: "🚲", art: "a", one: "trike", many: "trikes", gbp: 40 },
+    { id: "balance_bike", emoji: "🚲", art: "a", one: "balance bike", many: "balance bikes", gbp: 45 },
+    { id: "mountain_bike", emoji: "🚵", art: "a", one: "mountain bike", many: "mountain bikes", gbp: 250 },
+    { id: "bmx", emoji: "🚲", art: "a", one: "BMX", many: "BMXs", gbp: 180 },
+    { id: "ice_cream_van_toy", emoji: "🚚", art: "a", one: "toy ice-cream van", many: "toy ice-cream vans", gbp: 16 },
+    { id: "hoverboard", emoji: "🛹", art: "a", one: "hoverboard", many: "hoverboards", gbp: 90 },
+    { id: "segway_ride", emoji: "🛴", art: "a", one: "hover-scooter ride", many: "hover-scooter rides", gbp: 20 },
+    { id: "cable_car", emoji: "🚠", art: "a", one: "cable-car ticket", many: "cable-car tickets", gbp: 14 },
+    { id: "telescope", emoji: "🔭", art: "a", one: "telescope", many: "telescopes", gbp: 60 },
+    { id: "planetarium", emoji: "🌌", art: "a", one: "planetarium ticket", many: "planetarium tickets", gbp: 14 },
+    { id: "star_projector", emoji: "✨", art: "a", one: "star projector", many: "star projectors", gbp: 25 },
+    { id: "astro_suit", emoji: "👨‍🚀", art: "an", one: "astronaut dress-up suit", many: "astronaut dress-up suits", gbp: 22 },
+    { id: "moon_rock", emoji: "🌑", art: "a", one: "toy moon rock", many: "toy moon rocks", gbp: 8 },
+    { id: "rocket_model", emoji: "🚀", art: "a", one: "rocket model", many: "rocket models", gbp: 18 },
+    { id: "saturn_v", emoji: "🚀", art: "a", one: "Saturn V model", many: "Saturn V models", gbp: 25 },
+    { id: "space_lego", emoji: "🧱", art: "a", one: "space-station building set", many: "space-station building sets", gbp: 40 },
+    { id: "glow_stars", emoji: "⭐", art: "a", one: "pack of glow-in-the-dark stars", many: "packs of glow-in-the-dark stars", gbp: 8 },
+    { id: "alien_plush", emoji: "👽", art: "an", one: "alien soft toy", many: "alien soft toys", gbp: 12 },
+    { id: "ufo_toy", emoji: "🛸", art: "a", one: "UFO toy", many: "UFO toys", gbp: 15 },
+    { id: "satellite_toy", emoji: "🛰️", art: "a", one: "satellite toy", many: "satellite toys", gbp: 14 },
+    { id: "mars_rover", emoji: "🚐", art: "a", one: "Mars rover toy", many: "Mars rover toys", gbp: 20 },
+    { id: "moon_boots", emoji: "👢", art: "a", one: "pair of moon boots (toy)", many: "pairs of moon boots (toy)", gbp: 16 },
+    { id: "astro_ice", emoji: "🍦", art: "a", one: "pack of astronaut ice cream", many: "packs of astronaut ice cream", gbp: 6 },
+    { id: "space_film", emoji: "🎬", art: "a", one: "space film at the IMAX", many: "space films at the IMAX", gbp: 14 },
+    { id: "space_centre", emoji: "🎟️", art: "a", one: "National Space Centre ticket", many: "National Space Centre tickets", gbp: 18 },
+    { id: "jodrell", emoji: "📡", art: "a", one: "Jodrell Bank ticket", many: "Jodrell Bank tickets", gbp: 12 },
+    { id: "constellation", emoji: "🗺️", art: "a", one: "constellation map", many: "constellation maps", gbp: 8 },
+    { id: "meteorite", emoji: "☄️", art: "a", one: "toy meteorite", many: "toy meteorites", gbp: 7 },
+    { id: "space_badge", emoji: "📛", art: "a", one: "mission badge", many: "mission badges", gbp: 4 },
+    { id: "moon_trip", emoji: "🌙", art: "a", one: "pretend trip to the moon", many: "pretend trips to the moon", gbp: 1000000 },
+    { id: "star_book", emoji: "📖", art: "a", one: "book of stars", many: "books of stars", gbp: 10 },
+    { id: "night_sky_app", emoji: "📱", art: "a", one: "night-sky stargazing kit", many: "night-sky stargazing kits", gbp: 15 },
+    { id: "rocket_launch", emoji: "🚀", art: "a", one: "model-rocket launch kit", many: "model-rocket launch kits", gbp: 22 },
+    { id: "space_hoodie", emoji: "🧥", art: "a", one: "space hoodie", many: "space hoodies", gbp: 25 },
+    { id: "planet_mobile", emoji: "🪐", art: "a", one: "planets mobile", many: "planets mobiles", gbp: 12 },
+    { id: "solar_system", emoji: "☀️", art: "a", one: "solar-system model", many: "solar-system models", gbp: 18 },
+    { id: "comet_kit", emoji: "☄️", art: "a", one: "comet-making kit", many: "comet-making kits", gbp: 10 },
+    { id: "astro_lunch", emoji: "🍱", art: "an", one: "astronaut packed lunch box", many: "astronaut packed lunch boxes", gbp: 12 },
+    { id: "trex_model", emoji: "🦖", art: "a", one: "T. rex model", many: "T. rex models", gbp: 20 },
+    { id: "triceratops", emoji: "🦕", art: "a", one: "triceratops model", many: "triceratops models", gbp: 18 },
+    { id: "stegosaurus", emoji: "🦕", art: "a", one: "stegosaurus model", many: "stegosaurus models", gbp: 18 },
+    { id: "diplodocus", emoji: "🦕", art: "a", one: "diplodocus model", many: "diplodocus models", gbp: 18 },
+    { id: "velociraptor", emoji: "🦖", art: "a", one: "velociraptor model", many: "velociraptor models", gbp: 16 },
+    { id: "pterodactyl", emoji: "🦅", art: "a", one: "pterodactyl model", many: "pterodactyl models", gbp: 16 },
+    { id: "dino_egg", emoji: "🥚", art: "a", one: "dinosaur egg toy", many: "dinosaur egg toys", gbp: 8 },
+    { id: "dino_dig", emoji: "⛏️", art: "a", one: "dinosaur dig kit", many: "dinosaur dig kits", gbp: 15 },
+    { id: "dino_park", emoji: "🎟️", art: "a", one: "dinosaur-park ticket", many: "dinosaur-park tickets", gbp: 22 },
+    { id: "fossil", emoji: "🦴", art: "a", one: "fossil", many: "fossils", gbp: 10 },
+    { id: "ammonite", emoji: "🐚", art: "an", one: "ammonite", many: "ammonites", gbp: 8 },
+    { id: "dino_hoodie", emoji: "🧥", art: "a", one: "dinosaur hoodie", many: "dinosaur hoodies", gbp: 25 },
+    { id: "dino_duvet", emoji: "🛏️", art: "a", one: "dinosaur duvet set", many: "dinosaur duvet sets", gbp: 30 },
+    { id: "dino_nuggets", emoji: "🍗", art: "a", one: "box of dinosaur nuggets", many: "boxes of dinosaur nuggets", gbp: 3.5 },
+    { id: "nhm_trip", emoji: "🦕", art: "a", one: "trip to a dinosaur museum", many: "trips to a dinosaur museum", gbp: 25 },
+    { id: "dino_book", emoji: "📖", art: "a", one: "dinosaur book", many: "dinosaur books", gbp: 10 },
+    { id: "inflatable_rex", emoji: "🦖", art: "an", one: "inflatable T. rex suit", many: "inflatable T. rex suits", gbp: 35 },
+    { id: "dino_stickers", emoji: "📔", art: "a", one: "dinosaur sticker book", many: "dinosaur sticker books", gbp: 6 },
+    { id: "paleo_brush", emoji: "🪥", art: "a", one: "palaeontology brush set", many: "palaeontology brush sets", gbp: 12 },
+    { id: "amber_toy", emoji: "🟡", art: "a", one: "toy amber fossil", many: "toy amber fossils", gbp: 7 },
+    { id: "dino_bedtime", emoji: "🌙", art: "a", one: "dinosaur night light", many: "dinosaur night lights", gbp: 14 },
+    { id: "dino_backpack", emoji: "🎒", art: "a", one: "dinosaur backpack", many: "dinosaur backpacks", gbp: 18 },
+    { id: "dino_puzzle", emoji: "🧩", art: "a", one: "dinosaur puzzle", many: "dinosaur puzzles", gbp: 10 },
+    { id: "dino_lego", emoji: "🧱", art: "a", one: "dinosaur building set", many: "dinosaur building sets", gbp: 30 },
+    { id: "dino_figures", emoji: "🦖", art: "a", one: "tub of dinosaur figures", many: "tubs of dinosaur figures", gbp: 15 },
+    { id: "dino_poster", emoji: "📄", art: "a", one: "dinosaur poster", many: "dinosaur posters", gbp: 6 },
+    { id: "dino_timeline", emoji: "📏", art: "a", one: "dinosaur timeline chart", many: "dinosaur timeline charts", gbp: 8 },
+    { id: "ankylosaurus", emoji: "🦕", art: "an", one: "ankylosaurus model", many: "ankylosaurus models", gbp: 16 },
+    { id: "brachiosaurus", emoji: "🦕", art: "a", one: "brachiosaurus model", many: "brachiosaurus models", gbp: 18 },
+    { id: "spinosaurus", emoji: "🦖", art: "a", one: "spinosaurus model", many: "spinosaurus models", gbp: 18 },
+    { id: "dino_cake", emoji: "🎂", art: "a", one: "dinosaur cake", many: "dinosaur cakes", gbp: 25 },
+    { id: "fossil_hunt", emoji: "🎟️", art: "a", one: "fossil-hunt day", many: "fossil-hunt days", gbp: 18 }
   ];
 
   function funTotalNum() {
@@ -1689,8 +2539,12 @@
         return '<div class="li"><div class="grow">' + esc(rwAction(x.action)) + (x.item ? '<small>' + esc(x.item) + '</small>' : '') + '</div><span class="pill">' + (x.points > 0 ? '+' : '') + x.points + '</span></div>';
       }).join('') + '</div>' : '';
       setMain(backBtn() + '<h1>\u2B50 My points</h1>' + rwLevelCard(r) +
-        (r.waiting ? '<div class="nudge">Dad is having a look at ' + r.waiting + ' photo' + (r.waiting === 1 ? '' : 's') + '. You get 10 points for each one he says yes to.</div>' : '') +
-        '<h2>Rewards you can ask for</h2><p class="hint">Photos (when Dad says yes) are 10 points, ticks and updates are 5, and a brand new item is 20. Help 3 days in a row for a bonus.</p><div class="rwList">' +
+        (function () {
+        var p = (r && r.points) || {};
+        var photo = p.photo != null ? p.photo : 10, tick = p.found != null ? p.found : 5, neu = p.add != null ? p.add : 20;
+        return (r.waiting ? '<div class="nudge">Dad is having a look at ' + r.waiting + ' photo' + (r.waiting === 1 ? '' : 's') + '. You get ' + photo + ' points for each one he says yes to.</div>' : '') +
+        '<h2>Rewards you can ask for</h2><p class="hint">Photos (when Dad says yes) are ' + photo + ' points, ticks are ' + tick + ', and a brand new item is ' + neu + '. Help 3 days in a row for a bonus.</p><div class="rwList">';
+      })() +
         (rewards || '<p class="hint">Dad hasn\u2019t set any rewards yet.</p>') + '</div>' + reqs + recent);
     }).catch(function (e) { done(); setMain(backBtn() + '<h1>\u2B50 My points</h1>' + rwNeedOk()); });
   };
@@ -1713,10 +2567,12 @@
           '<button class="btn" data-act="rwNo" data-id="' + esc(x.id) + '">Not this time (PIN)</button></div></div>';
       }).join('');
       var all = (r.allRewards || []).map(function (x) {
-        return '<div class="rwItem"><label class="field">Reward <input type="text" class="rwTitle" data-id="' + esc(x.id) + '" value="' + esc(x.title) + '" maxlength="60"></label>' +
-          '<label class="field">Points <input type="number" class="rwCost" data-id="' + esc(x.id) + '" value="' + x.cost + '" min="5" step="5"></label>' +
-          '<label class="field" style="font-weight:700"><input type="checkbox" class="rwOn" data-id="' + esc(x.id) + '"' + (x.active ? ' checked' : '') + '> On the list</label></div>';
+        return '<div class="rwItem" data-id="' + esc(x.id) + '"><p class="rwEditHead">Edit this reward</p>' +
+          '<label class="field">Reward name <input type="text" class="rwTitle" data-id="' + esc(x.id) + '" value="' + esc(x.title) + '" maxlength="60" autocomplete="off"></label>' +
+          '<label class="field">Points needed <input type="number" class="rwCost" data-id="' + esc(x.id) + '" value="' + x.cost + '" min="5" step="5"></label>' +
+          '<label class="rwOnRow"><input type="checkbox" class="rwOn" data-id="' + esc(x.id) + '"' + (x.active ? ' checked' : '') + '> On the list</label></div>';
       }).join('');
+      var pts = (r.points || {});
       var log = (r.log || []).slice(0, 80).map(function (x) {
         return '<div class="li"><div class="grow">' + esc(rwAction(x.action)) + (x.item ? '<small>' + esc(x.item) + (x.detail ? ' \u00B7 ' + esc(x.detail) : '') + '</small>' : (x.detail ? '<small>' + esc(x.detail) + '</small>' : '')) +
           '<small>' + esc(niceWhen(x.when)) + '</small></div><span class="pill">' + (x.points > 0 ? '+' : '') + x.points + '</span></div>';
@@ -1726,10 +2582,17 @@
         (r.streak ? ' \u00B7 ' + r.streak + '-day streak' : '') + '</div>' +
         '<h2>Photos waiting</h2>' + (q ? '<div class="rwList">' + q + '</div>' : '<p class="hint">None waiting \u2014 you\u2019re all caught up.</p>') +
         '<h2>Reward asks</h2>' + (asks ? '<div class="rwList">' + asks + '</div>' : '<p class="hint">No asks waiting.</p>') +
-        '<h2>Rewards he can ask for</h2><p class="hint">No money in the names, please. Switch one off rather than deleting it.</p><div class="rwList" id="rwEdit">' + all +
-        '<div class="rwItem"><label class="field">New reward <input type="text" id="rwNewTitle" maxlength="60" placeholder="e.g. Pick the next film"></label>' +
-        '<label class="field">Points <input type="number" id="rwNewCost" min="5" step="5" value="100"></label></div></div>' +
-        '<p class="center"><button class="btn main" data-act="rwSave">Save rewards</button></p>' +
+        '<h2>Rewards he can ask for</h2><p class="hint">You can edit the name, the points, or tick \u201COn the list\u201D. Add as many as you like, then tap Save. Switch one off rather than deleting it. No money in the names, please.</p><div class="rwList" id="rwEdit">' + all + '</div>' +
+        '<p><button type="button" class="rwAdd" data-act="rwAdd">+ Add reward</button></p>' +
+        '<h2>Points he earns</h2><p class="hint">Change how many points a photo, a tick, or a new item is worth.</p>' +
+        '<div class="card" id="rwRules">' +
+          '<label class="field">Points for a photo (when you say yes) <input type="number" id="rwPtsPhoto" min="0" step="1" value="' + (pts.photo != null ? pts.photo : 10) + '"></label>' +
+          '<label class="field">Points for a tick / found it <input type="number" id="rwPtsTick" min="0" step="1" value="' + (pts.found != null ? pts.found : 5) + '"></label>' +
+          '<label class="field">Points for an update <input type="number" id="rwPtsUpdate" min="0" step="1" value="' + (pts.update != null ? pts.update : 5) + '"></label>' +
+          '<label class="field">Points for a brand new item <input type="number" id="rwPtsAdd" min="0" step="1" value="' + (pts.add != null ? pts.add : 20) + '"></label>' +
+          '<label class="field">Bonus for helping 3 days in a row <input type="number" id="rwPtsStreak" min="0" step="1" value="' + (pts.streak != null ? pts.streak : 15) + '"></label>' +
+        '</div>' +
+        '<p class="center"><button class="btn main" data-act="rwSave" id="rwSaveBtn">Save</button></p>' +
         '<h2>Activity log</h2><div class="list rwLog">' + (log || '<p class="hint">Nothing yet.</p>') + '</div>');
       (r.queue || []).forEach(function (p) {
         call('getQueuePhoto', p.id, S.role).then(function (ph) {
@@ -1782,23 +2645,87 @@
       });
     }).catch(oops);
   }
-  function saveRewardsUI() {
+  function addRewardRow() {
+    var box = $('rwEdit'); if (!box) return;
+    var el = document.createElement('div');
+    el.className = 'rwItem';
+    el.innerHTML = '<p class="rwEditHead">New reward</p>' +
+      '<label class="field">Reward name <input type="text" class="rwTitle" maxlength="60" placeholder="e.g. Pick the next film" autocomplete="off"></label>' +
+      '<label class="field">Points needed <input type="number" class="rwCost" min="5" step="5" value="100"></label>' +
+      '<label class="rwOnRow"><input type="checkbox" class="rwOn" checked> On the list</label>';
+    box.appendChild(el);
+    var inp = el.querySelector('.rwTitle'); if (inp) inp.focus();
+    var btn = $('rwSaveBtn'); if (btn) { btn.textContent = 'Save'; btn.classList.remove('saved'); }
+  }
+  function collectRewardsForm() {
     var list = [], bad = '';
     document.querySelectorAll('#rwEdit .rwItem').forEach(function (el) {
-      var titleEl = el.querySelector('.rwTitle') || el.querySelector('#rwNewTitle');
-      var costEl = el.querySelector('.rwCost') || el.querySelector('#rwNewCost');
+      var titleEl = el.querySelector('.rwTitle'), costEl = el.querySelector('.rwCost');
       if (!titleEl || !costEl) return;
       var title = (titleEl.value || '').replace(/\s+/g, ' ').trim();
       if (!title) return;
       var cost = parseInt(costEl.value, 10);
       var on = el.querySelector('.rwOn');
-      var id = (titleEl.getAttribute('data-id') || '');
+      var id = (titleEl.getAttribute('data-id') || el.getAttribute('data-id') || '');
       if (/[\u00a3$\u20ac]|\b\d+\s*p\b|\bpounds?\b|\bquid\b|\bmoney\b|\bcash\b|\bdollars?\b|\beuros?\b|\bpence\b/i.test(title)) bad = 'Keep money out of reward names.';
       list.push({ id: id, title: title, cost: cost, active: on ? on.checked : true });
     });
-    if (bad) { toast(bad, 'oops'); return; }
-    busy('Saving rewards\u2026');
-    call('saveRewards', list, S.role).then(function () { done(); RW = null; toast('Rewards saved.', 'good'); go('rewards', {}, true); }).catch(oops);
+    var pts = {
+      photo: parseInt(($('rwPtsPhoto') && $('rwPtsPhoto').value) || '10', 10),
+      found: parseInt(($('rwPtsTick') && $('rwPtsTick').value) || '5', 10),
+      update: parseInt(($('rwPtsUpdate') && $('rwPtsUpdate').value) || '5', 10),
+      add: parseInt(($('rwPtsAdd') && $('rwPtsAdd').value) || '20', 10),
+      streak: parseInt(($('rwPtsStreak') && $('rwPtsStreak').value) || '15', 10)
+    };
+    return { list: list, pts: pts, bad: bad };
+  }
+  function markRewardsSaved() {
+    var btn = $('rwSaveBtn');
+    if (btn) { btn.textContent = 'Saved \u2713'; btn.classList.add('saved'); }
+    toast('Saved \u2713', 'good');
+  }
+  function withDadPinThen(fn) {
+    if (dadUnlocked()) return fn();
+    var wrap = sheet('Dad\u2019s PIN', '<p class="hint">Needed to save the rewards.</p><input id="rwPin" type="password" inputmode="numeric" maxlength="4" autocomplete="one-time-code" placeholder="\u2022\u2022\u2022\u2022">',
+      [{ label: 'Save', value: 'go', cls: 'main' }, { label: 'Cancel', value: '' }]);
+    setTimeout(function () { var i = $('rwPin'); if (i) i.focus(); }, 50);
+    return wrap.then(function (v) {
+      var pin = ($('rwPin') && $('rwPin').value) || '';
+      if (v !== 'go') return;
+      if (!/^\d{4}$/.test(pin)) { toast('That needs to be the 4-digit PIN.', 'oops'); return; }
+      busy('Checking the PIN\u2026');
+      return call('verifyDadPin', pin).then(function (r) {
+        done();
+        if (r && r.ok && r.token) { storeDadToken(r.token, r.expires); return fn(); }
+        toast('That PIN didn\u2019t match \u2014 have another go.', 'oops');
+      });
+    });
+  }
+  function saveRewardsUI() {
+    var form = collectRewardsForm();
+    if (form.bad) { toast(form.bad, 'oops'); return; }
+    if (!form.list.length) { toast('Add at least one reward with a name.', 'oops'); return; }
+    withDadPinThen(function () {
+      busy('Saving\u2026');
+      var p1 = call('saveRewards', form.list, S.role);
+      var p2 = call('savePointRules', form.pts, S.role).catch(function (e) {
+        var msg = String((e && e.message) || e || '');
+        if (/unknown action/i.test(msg)) return { skipped: true };
+        throw e;
+      });
+      return Promise.all([p1, p2]).then(function (res) {
+        done();
+        RW = null;
+        var saved = res[0] && res[0].rewards;
+        if (saved && $('rwEdit')) {
+          var titles = $('rwEdit').querySelectorAll('.rwTitle');
+          saved.forEach(function (r, i) { if (titles[i]) titles[i].setAttribute('data-id', r.id); });
+        }
+        markRewardsSaved();
+        if (res[1] && res[1].skipped) toast('Rewards saved. Points rules need the server update before they will stick.', 'good');
+        loadRewards(true);
+      }).catch(oops);
+    }).catch(oops);
   }
   function keepAddName() {
     var A = addState();
@@ -2458,10 +3385,218 @@ SCREENS.who = function () {
     }).catch(oops);
   }
 
+
+  var WANT_EGGS = ['\uD83D\uDC15', '\uD83C\uDF69', '\uD83D\uDC1F', '\uD83D\uDC7D', '\uD83C\uDF34', '\uD83D\uDCFA', '\uD83D\uDC7E'];
+  var WAVE_WORDS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15 };
+  function waveNum(s) {
+    var m = String(s || '').match(/(?:wave|series|season)\s+([0-9]+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen)/i);
+    if (!m) return 9999;
+    var w = m[1].toLowerCase();
+    return WAVE_WORDS[w] || parseInt(w, 10) || 9999;
+  }
+  function isWantedWave(s) {
+    return /(?:^|\b)(?:Wave|Series|Season)\s+(?:[0-9]+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen)\b/i.test(String(s || '').trim());
+  }
+  function wantedParts(w) {
+    var cat = String((w && w.range) || '').trim();
+    var series = String((w && w.series) || '').trim();
+    if (series && !isWantedWave(series)) series = '';
+    var wr = /^(.*?)\s+((?:Wave|Series|Season)\s+(?:[0-9]+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen)(?:\b.*)?)$/i;
+    if (!series) {
+      var m = cat.match(wr);
+      if (m) { cat = m[1].trim(); series = m[2].trim(); }
+    }
+    if (!series) {
+      var m2 = String((w && w.name) || '').match(/\b((?:Wave|Series|Season)\s+(?:[0-9]+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen))\b/i);
+      if (m2) series = m2[1];
+    }
+    if (!cat) cat = 'Other';
+    return { cat: cat, series: series };
+  }
+  function wantedGroupId(p) { return (p.cat + '|' + (p.series || '')).toLowerCase(); }
+  function wantedGroupTitle(p) { return p.series ? p.cat + ' \u00b7 ' + p.series : p.cat; }
+  function wantedGroups(list) {
+    var map = {}, order = [];
+    (list || []).forEach(function (w, i) {
+      var p = wantedParts(w), id = wantedGroupId(p);
+      if (!map[id]) { map[id] = { id: id, title: wantedGroupTitle(p), cat: p.cat, series: p.series, items: [] }; order.push(id); }
+      map[id].items.push({ w: w, i: i });
+    });
+    order.sort(function (a, b) {
+      var A = map[a], B = map[b];
+      var ac = A.cat === 'Other' ? 1 : 0, bc = B.cat === 'Other' ? 1 : 0;
+      if (ac !== bc) return ac - bc;
+      var c = A.cat.localeCompare(B.cat, 'en-GB', { sensitivity: 'base' });
+      if (c) return c;
+      var aw = waveNum(A.series), bw = waveNum(B.series);
+      if (aw !== bw) return aw - bw;
+      return String(A.series || '').localeCompare(String(B.series || ''), 'en-GB', { sensitivity: 'base' });
+    });
+    return order.map(function (id) {
+      map[id].items.sort(function (a, b) { return String(a.w.name || '').localeCompare(String(b.w.name || ''), 'en-GB', { sensitivity: 'base' }); });
+      return map[id];
+    });
+  }
+  function wantCollapsedMap() {
+    try { var o = JSON.parse(LS.get('wantCollapsed') || '{}'); return o && typeof o === 'object' ? o : {}; }
+    catch (e) { return {}; }
+  }
+  function wantSetCollapsed(id, on) {
+    var o = wantCollapsedMap();
+    if (on) o[id] = 1; else delete o[id];
+    LS.set('wantCollapsed', JSON.stringify(o));
+  }
+  function wantedDivider(n) {
+    var bits = [];
+    for (var i = 0; i < WANT_EGGS.length; i++) bits.push(WANT_EGGS[(i + n) % WANT_EGGS.length]);
+    return '<div class="wantDiv" aria-hidden="true">' + bits.join(' ') + '</div>';
+  }
+  function wantedSearchHay(w) {
+    return norm([w.name, w.range, w.series, w.conditionWanted].filter(Boolean).join(' '));
+  }
+  function wantedItemHtml(w, i, kid) {
+    var hay = esc(wantedSearchHay(w));
+    var info = '<button type="button" class="btn small wantInfoBtn" data-act="wantInfo" data-src="' + (kid ? 'kid' : 'dad') + '" data-i="' + i + '" aria-label="Info about ' + esc(w.name) + '">\u24D8</button>';
+    if (kid) {
+      return '<div class="khuntCard" data-wq="' + hay + '"><b>' + esc(w.name) + '</b><small>' + esc([w.range, isWantedWave(w.series) ? w.series : '', (!isWantedWave(w.series) && w.series) ? w.series : (w.number || '')].filter(Boolean).join(' \u00b7 ')) + '</small>' +
+        '<div class="row wantActions">' + info + '<button class="btn green kbtn" data-act="kidGot" data-i="' + i + '">\uD83C\uDF89 Found it!</button></div></div>';
+    }
+    return '<div class="li' + (w.deal ? ' deal' : '') + '" data-wq="' + hay + '"><div class="grow">' + (w.deal ? '<span class="pill red">\uD83D\uDD25 Deal</span> ' : '') + esc(w.name) +
+      '<small>' + esc([w.range, w.series, w.conditionWanted].filter(Boolean).join(' \u00b7 ')) + '</small>' +
+      (w.deal ? '<small>' + esc(['Found' + (w.dealFound ? ' ' + w.dealFound : ''), w.dealCondition ? 'condition: ' + w.dealCondition : ''].filter(Boolean).join(' \u00b7 ')) + '</small>' +
+        (w.dealLink ? '<a class="btn small yel" style="margin-top:6px" href="' + esc(w.dealLink) + '" target="_blank" rel="noopener">Open the deal \u2197</a>' : '') : '') +
+      '</div><div class="stack" style="gap:6px">' + info +
+      (isPriv() ? '<button class="btn small" data-act="findCheapest" data-i="' + i + '">\uD83D\uDCB7 Find cheapest</button>' : '') +
+      '<button class="btn green small" data-act="gotWanted" data-i="' + i + '">Got it</button></div></div>';
+  }
+  function renderWantedGroups(list, kid) {
+    var groups = wantedGroups(list);
+    if (!groups.length) return kid ? '<div class="nudge">Nothing on the hunt list right now.</div>' : '<div class="nudge">Nothing on the wanted list right now.</div>';
+    var col = wantCollapsedMap();
+    var h = '<div class="wantBar"><button type="button" class="btn small" data-act="wantCollapseAll">Collapse all</button>' +
+      '<button type="button" class="btn small" data-act="wantExpandAll">Expand all</button></div>';
+    h += '<div id="wantList" class="' + (kid ? 'khunt' : 'list') + ' wantGrouped">';
+    groups.forEach(function (g, gi) {
+      var closed = !!col[g.id];
+      h += '<div class="wantGroup' + (closed ? ' is-collapsed' : '') + '" data-gid="' + esc(g.id) + '">';
+      if (gi) h += wantedDivider(gi);
+      h += '<button type="button" class="wantHead" data-act="wantToggle" data-gid="' + esc(g.id) + '" aria-expanded="' + (closed ? 'false' : 'true') + '">' +
+        '<span class="wantChev">' + (closed ? '\u25B8' : '\u25BE') + '</span> ' +
+        esc(g.title) + ' <span class="wantN">(' + g.items.length + ')</span></button>';
+      h += '<div class="wantItems">';
+      g.items.forEach(function (it) { h += wantedItemHtml(it.w, it.i, kid); });
+      h += '</div></div>';
+    });
+    return h + '</div>';
+  }
+  function wantToggle(id, force) {
+    document.querySelectorAll('.wantGroup').forEach(function (el) {
+      var gid = el.getAttribute('data-gid');
+      if (id && gid !== id) return;
+      var on = force != null ? !!force : !el.classList.contains('is-collapsed');
+      el.classList.toggle('is-collapsed', on);
+      wantSetCollapsed(gid, on);
+      var btn = el.querySelector('.wantHead');
+      if (btn) {
+        btn.setAttribute('aria-expanded', on ? 'false' : 'true');
+        var ch = btn.querySelector('.wantChev');
+        if (ch) ch.textContent = on ? '\u25B8' : '\u25BE';
+      }
+    });
+  }
+  function wantCollapseAll(on) {
+    var o = {};
+    document.querySelectorAll('.wantGroup').forEach(function (el) {
+      var gid = el.getAttribute('data-gid');
+      if (on) o[gid] = 1;
+    });
+    LS.set('wantCollapsed', JSON.stringify(o));
+    wantToggle(null, on);
+  }
+  function filterWantedList(qRaw, total) {
+    var q = norm(qRaw), shown = 0;
+    document.querySelectorAll('#wantList .wantGroup').forEach(function (g) {
+      var n = 0;
+      g.querySelectorAll('[data-wq]').forEach(function (li) {
+        var words = q ? q.split(' ') : [], txt = li.getAttribute('data-wq') || '', hit = words.every(function (w) { return txt.indexOf(w) >= 0; });
+        li.hidden = !hit; if (hit) { n++; shown++; }
+      });
+      g.hidden = q ? n === 0 : false;
+      if (q && n) g.classList.remove('is-collapsed');
+    });
+    if ($('wantCount')) $('wantCount').textContent = q ? shown + ' of ' + total + ' match \u201C' + qRaw + '\u201D.' : total + ' on the hunt list. Got one? Tap \u201CGot it\u201D.';
+  }
+  function wantedSearchQuery(w) {
+    return [w && w.name, w && w.range, w && w.series].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+  }
+  function ebayWantedUrl(w) {
+    return 'https://www.ebay.co.uk/sch/i.html?_nkw=' + encodeURIComponent(wantedSearchQuery(w));
+  }
+  var REF_PIC_MEM = {};
+  function refPicQuery(w) {
+    var n = String((w && w.name) || '');
+    n = n.replace(/\((?:sealed|carded|loose)[^)]*\)/ig, '');
+    n = n.replace(/\b(?:funko|pop!|pop|figure|figurine|exclusive)\b/ig, '');
+    n = n.replace(/\s+/g, ' ').trim();
+    if (n && !/simpsons/i.test(n)) n += ' The Simpsons';
+    return n;
+  }
+  function rememberRefPic(key, url) {
+    REF_PIC_MEM[key] = url || '';
+    try {
+      var o = JSON.parse(LS.get('wantRefPic') || '{}');
+      o[key] = url || '';
+      var keys = Object.keys(o);
+      if (keys.length > 80) keys.slice(0, keys.length - 80).forEach(function (k) { delete o[k]; });
+      LS.set('wantRefPic', JSON.stringify(o));
+    } catch (e) {}
+    return url || '';
+  }
+  function wikiApiPics(api, q) {
+    var url = api + '?action=query&format=json&origin=*&prop=pageimages&piprop=thumbnail&pithumbsize=400&generator=search&gsrlimit=5&gsrsearch=' + encodeURIComponent(q);
+    return fetch(url).then(function (r) { return r.ok ? r.json() : {}; }).then(function (data) {
+      var pages = (data && data.query && data.query.pages) || {}, best = '';
+      Object.keys(pages).forEach(function (id) {
+        var t = pages[id] && pages[id].thumbnail && pages[id].thumbnail.source;
+        if (t && /^https:\/\//.test(t) && !best) best = t;
+      });
+      return best;
+    }).catch(function () { return ''; });
+  }
+  function findRefPic(w) {
+    var key = wantedSearchQuery(w);
+    if (REF_PIC_MEM[key] !== undefined) return Promise.resolve(REF_PIC_MEM[key]);
+    try {
+      var cached = JSON.parse(LS.get('wantRefPic') || '{}');
+      if (typeof cached[key] === 'string') { REF_PIC_MEM[key] = cached[key]; return Promise.resolve(cached[key]); }
+    } catch (e) {}
+    var q = refPicQuery(w);
+    return wikiApiPics('https://en.wikipedia.org/w/api.php', q).then(function (url) {
+      if (url) return rememberRefPic(key, url);
+      return wikiApiPics('https://simpsons.fandom.com/api.php', q).then(function (url2) { return rememberRefPic(key, url2 || ''); });
+    }).catch(function () { return rememberRefPic(key, ''); });
+  }
+  function wantedInfoSheet(i, list) {
+    var w = (list || [])[i]; if (!w) return;
+    var ebay = ebayWantedUrl(w);
+    sheet(w.name, '<div class="wantInfo">' +
+      '<div class="wantRef" id="wantRef"><div class="wantRefPh">Looking for a reference picture\u2026</div></div>' +
+      '<p class="wantRefLab">Reference picture</p>' +
+      '<p class="hint">This is just to help us recognise it \u2014 it is not one of our photos, and we never save it as one.</p>' +
+      '<a class="btn full main" href="' + esc(ebay) + '" target="_blank" rel="noopener">Search on eBay UK \u2197</a>' +
+      '</div>',
+      [{ label: 'Close', value: false }]);
+    findRefPic(w).then(function (url) {
+      var box = $('wantRef'); if (!box) return;
+      if (url) box.innerHTML = '<img alt="" src="' + esc(url) + '" referrerpolicy="no-referrer">';
+      else box.innerHTML = '<div class="wantRefPh">No reference picture just now \u2014 you can still hunt by name on eBay.</div>';
+    });
+  }
+
   /* ---- Wanted + checklists ---- */
   SCREENS.wanted = function () {
     busy('Getting the wanted list\u2026');
-    call('getWanted', S.role).then(function (list) {
+    loadHomeWanted().then(function (list) {
       done();
       list = (list || []).filter(function (w) { return !neverShow(w.name) && (isPriv() || !sonHidden(w.name)); });
       S.homeWanted = list.slice();
@@ -2474,24 +3609,11 @@ SCREENS.who = function () {
         '<div class="search"><input id="wantSearch" type="search" placeholder="\uD83D\uDD0D Search the wanted list" aria-label="Search wanted" autocomplete="off"></div>' +
         '<p class="hint" id="wantCount">' + list.length + ' on the hunt list. Got one? Tap \u201CGot it\u201D.</p>' +
         '<div class="row" style="margin-bottom:10px"><button class="btn small" data-act="go" data-to="missing">\uD83E\uDDE9 Missing from sets</button><button class="btn small" data-act="go" data-to="checklists">\u2705 Checklists</button></div>' +
-        '<div class="list" id="wantList">' +
-        (list.length ? list.map(function (w, i) {
-          return '<div class="li' + (w.deal ? ' deal' : '') + '" data-wq="' + esc(norm(w.name + ' ' + w.range)) + '"><div class="grow">' + (w.deal ? '<span class="pill red">\uD83D\uDD25 Deal</span> ' : '') + esc(w.name) + '<small>' + esc([w.range, w.conditionWanted, isPriv() && w.maxPrice ? 'max ' + w.maxPrice : ''].filter(Boolean).join(' \u00B7 ')) + '</small>' +
-            (w.deal ? '<small>' + esc(['Found' + (w.dealFound ? ' ' + w.dealFound : ''), w.dealCondition ? 'condition: ' + w.dealCondition : '', isPriv() && w.dealPrice != null ? gbp(w.dealPrice) : ''].filter(Boolean).join(' \u00B7 ')) + '</small>' + (w.dealLink ? '<a class="btn small yel" style="margin-top:6px" href="' + esc(w.dealLink) + '" target="_blank" rel="noopener">Open the deal \u2197</a>' : '') : '') + '</div>' +
-            '<div class="stack" style="gap:6px"><button class="btn small" data-act="findCheapest" data-i="' + i + '">\uD83D\uDCB7 Find cheapest</button><button class="btn green small" data-act="gotWanted" data-i="' + i + '">Got it</button></div></div>';
-        }).join('') : '<div class="nudge">Nothing on the wanted list right now.</div>') + '</div>' +
+        renderWantedGroups(list, false) +
         '<p><button class="btn full" data-act="go" data-to="checklists">\u2705 Full-set checklists</button></p>';
       S.wantedList = list;
       setMain(h);
-      $('wantSearch').addEventListener('input', function (e) {
-        var q = norm(e.target.value);
-        var shown = 0;
-        document.querySelectorAll('#wantList [data-wq]').forEach(function (li) {
-          var words = q ? q.split(' ') : [], txt = li.getAttribute('data-wq'), hit = words.every(function (w) { return txt.indexOf(w) >= 0; });
-          li.hidden = !hit; if (hit) shown++;
-        });
-        $('wantCount').textContent = q ? shown + ' of ' + list.length + ' match \u201C' + e.target.value + '\u201D.' : list.length + ' on the hunt list. Got one? Tap \u201CGot it\u201D.';
-      });
+      $('wantSearch').addEventListener('input', function (e) { filterWantedList(e.target.value, list.length); });
     }).catch(oops);
   };
   /* Price-check links only (opens the shop's own search; nothing is bought or bid on). */
@@ -2509,13 +3631,21 @@ SCREENS.who = function () {
   }
   function gotWanted(i) {
     var w = S.wantedList[i]; if (!w) return;
-    confirmSheet('Got it? \uD83C\uDF89', 'Move <b>' + esc(w.name) + '</b> into the collection as Owned? I\u2019ll give it a folder so you can snap it next.', 'Yes, got it!', 'Not yet').then(function (ok) {
+    var fromList = w.kind === 'checklist';
+    confirmSheet('Got it? \uD83C\uDF89', fromList ? 'Mark <b>' + esc(w.name) + '</b> as got on the ' + esc(w.range || 'checklist') + ' list?' : 'Move <b>' + esc(w.name) + '</b> into the collection as Owned? I\u2019ll give it a folder so you can snap it next.', 'Yes, got it!', 'Not yet').then(function (ok) {
       if (!ok) return;
-      busy('Moving it into the collection\u2026');
+      busy(fromList ? 'Ticking it off\u2026' : 'Moving it into the collection\u2026');
       return call('markGotIt', w.kind, w.ref, w.name, S.role).then(function (r) {
-        done(); S.boot = null; pointsNote(r, '\u2705 Nice one! It\u2019s in the collection now.');
-        return confirmSheet('Snap it now?', 'Take a photo of <b>' + esc(r.name) + '</b> while it\u2019s in your hand?', '\uD83D\uDCF7 Take photo', 'Later').then(function (snap) {
-          if (snap) openCamera({ key: r.key, name: r.name }); else go('wanted', {}, true);
+        done(); S.boot = null;
+        pointsNote(r, fromList || r.suggestAdd ? '\u2705 Ticked off the list.' : '\u2705 Nice one! It\u2019s in the collection now.');
+        if (r.key) {
+          return confirmSheet('Snap it now?', 'Take a photo of <b>' + esc(r.name) + '</b> while it\u2019s in your hand?', '\uD83D\uDCF7 Take photo', 'Later').then(function (snap) {
+            if (snap) openCamera({ key: r.key, name: r.name }); else go('wanted', {}, true);
+          });
+        }
+        return confirmSheet('Add it to the collection?', 'Want to add <b>' + esc(r.name || w.name) + '</b> to the collection now with a photo?', 'Yes, add it', 'Later').then(function (add) {
+          if (add) { S.add = { step: 1, shots: [], name: w.name, range: w.range, condition: '', more: {} }; go('add'); }
+          else go('wanted', {}, true);
         });
       });
     }).catch(oops);
@@ -3277,16 +4407,23 @@ SCREENS.who = function () {
       case 'letterOpen': showDadLetter(true); break;
       case 'letterGo': if (NAV.pushed > 0) layerBack(); else hideDadLetter(); break;
       case 'notesOpen': go('kidNotes'); break;
+      case 'wantToggle': wantToggle(el.getAttribute('data-gid')); break;
+      case 'wantCollapseAll': wantCollapseAll(true); break;
+      case 'wantExpandAll': wantCollapseAll(false); break;
+      case 'wantInfo': wantedInfoSheet(+el.getAttribute('data-i'), el.getAttribute('data-src') === 'kid' ? S.kidWanted : S.wantedList); break;
       case 'funPrev': cycleFunWorth(-1); break;
       case 'funNext': cycleFunWorth(1); break;
+      case 'jokeNext': showNextJoke(); break;
       case 'noteOpen': showDadNote(el.getAttribute('data-i')); break;
-      case 'noteGo': if (NAV.pushed > 0) layerBack(); else hideDadNote(); break;
+      case 'noteGo': if (NOTE_UI.fromPointer && Date.now() - NOTE_UI.fromPointer < 500) break; onNoteGo(); break;
+      case 'noteSkip': thanksDadNote(); break;
       case 'rwAsk': askReward(el.getAttribute('data-id')); break;
       case 'rwYes': decideRewardUI(el.getAttribute('data-id'), true); break;
       case 'rwNo': decideRewardUI(el.getAttribute('data-id'), false); break;
       case 'rwPhotoYes': decidePhotoUI(el.getAttribute('data-id'), true, !!(el.closest('.rwItem') && el.closest('.rwItem').querySelector('.qMain') && el.closest('.rwItem').querySelector('.qMain').checked)); break;
       case 'rwPhotoNo': decidePhotoUI(el.getAttribute('data-id'), false, false); break;
       case 'rwSave': saveRewardsUI(); break;
+      case 'rwAdd': addRewardRow(); break;
       case 'addScan': keepAddName(); openScanner({ add: true }); break;
       case 'addTypeBc': keepAddName(); SCAN.opts = { add: true }; typeCode(); break;
       case 'addClearBc': var A0 = addState(); A0.barcode = ''; A0.bcLook = undefined; A0.bcRef = ''; go('add', {}, true); break;
@@ -3306,7 +4443,7 @@ SCREENS.who = function () {
   });
   $('stuckBtn').addEventListener('click', function () {
     if (!S.kid) return showHelp();
-    sheet('How it works', '<ul><li>\uD83E\uDDF8 <b>Our stuff</b>: tap anything to see it big or add a photo.</li><li>\u2B50 <b>Hunt</b>: things we\u2019re looking for. Found one? Tap \u201CFound it!\u201D</li><li>\uD83D\uDCF7 <b>Scan</b>: point at a box\u2019s barcode to see if we\u2019ve got it.</li><li>\u2709\uFE0F <b>Letter from Dad</b>: how it all started. It pops up every now and then, and you can open it again any time.</li><li>\uD83D\uDCDD <b>Notes from Dad</b>: a little note every few visits, and all of them under Notes from Dad.</li><li>\uD83C\uDF66 <b>What\u2019s our collection worth?</b>: swipe or tap to try ice creams, Dons tickets, tractors and lots more.</li><li>\u2B50 <b>My points</b>: earn points and ask Dad for rewards.</li><li>No faces in photos - hands are fine.</li></ul>',
+    sheet('How it works', '<ul><li>\uD83E\uDDF8 <b>Our stuff</b>: tap anything to see it big or add a photo.</li><li>\u2B50 <b>Hunt</b>: things we\u2019re looking for. Found one? Tap \u201CFound it!\u201D</li><li>\uD83D\uDCF7 <b>Scan</b>: point at a box\u2019s barcode to see if we\u2019ve got it.</li><li>\u2709\uFE0F <b>Letter from Dad</b>: how it all started. It pops up every now and then, and you can open it again any time.</li><li>\uD83D\uDCDD <b>Notes from Dad</b>: a little note every few visits, and all of them under Notes from Dad.</li><li>\uD83D\uDE04 <b>A daft joke</b>: a new one when you open this mode. Tap it for another.</li><li>\uD83C\uDF66 <b>What\u2019s our collection worth?</b>: swipe or tap to try ice creams, Dons tickets, tractors and lots more.</li><li>\u2B50 <b>My points</b>: earn points and ask Dad for rewards.</li><li>No faces in photos - hands are fine.</li></ul>',
       [{ label: '\u21BB Refresh', value: 'refresh' }, { label: 'Got it!', value: 'ok', cls: 'main' }]).then(function (v) { if (v === 'refresh') { S.boot = null; thumbsRefresh(); go(S.screen || 'kid', S.params, true); } });
   });
   $('homeBtn').addEventListener('click', function () { if (S.kid) { S.history = []; go('kid', {}, true); return; } if (S.role) { S.history = []; go(S.screen === 'home' ? 'settings' : 'home', {}, true); } });
@@ -3318,7 +4455,7 @@ SCREENS.who = function () {
   /* ---------------- start ---------------- */
   loadSavedThumbs();
   IDB.qAll().then(function (q) { NET.queueLen = q.length; renderNetBar(); if (q.length && navigator.onLine !== false) syncQueue(); }, noop);
-  if (S.kid) { S.role = KID_ROLE; S.kidGreeting = true; pickFunUnitRandom(); go('kid', {}, true); }
+  if (S.kid) { S.role = KID_ROLE; S.kidGreeting = true; pickFunUnitRandom(); pickJokeOnOpen(); go('kid', {}, true); }
   else if (!LS.get('seenGuide')) go('guide', { i: 0 }, true);
   else if (!S.role) go('who', {}, true);
   else if (S.role === PRIV && THEME.needsPin && !dadUnlocked()) askDadPin(S.role);

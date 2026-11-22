@@ -419,6 +419,191 @@
   .addBcFound { margin: 8px 0; }
   .addBcFound p { margin: 4px 0; }
   .addBcRef { display: block; width: 140px; height: 140px; object-fit: contain; background: #fff; border: 3px dashed var(--ink); border-radius: 12px; margin: 8px 0 4px; }
+
+  /* ---- v7i: Springfield sky + pinned note / letter frame ---- */
+  .letterWrap, .noteWrap { background: #70CCF5; }
+  .letterSky {
+    position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
+  }
+  .letterSky svg { width: 100%; height: 100%; display: block; }
+  .letterFrame, .noteFrame {
+    position: relative; z-index: 1;
+    width: 100%; margin: auto;
+    display: flex; flex-direction: column;
+    flex: 0 1 auto; min-height: 0; max-height: 100%;
+    box-sizing: border-box;
+  }
+  .letterFrame { max-width: 520px; }
+  .noteFrame { max-width: 360px; transform: rotate(-1.6deg); }
+  .letterWrap.popIn .letterFrame { animation: cardPop .45s cubic-bezier(.2, 1.4, .3, 1) both; }
+  .noteWrap.popIn .noteFrame { animation: notePop .5s cubic-bezier(.2, 1.4, .3, 1) both; }
+  @keyframes cardPop {
+    0% { transform: scale(.84); opacity: 0; }
+    60% { transform: scale(1.04); opacity: 1; }
+    100% { transform: scale(1); }
+  }
+  @keyframes notePop {
+    0% { transform: rotate(-1.6deg) scale(.78); opacity: 0; }
+    58% { transform: rotate(-1.6deg) scale(1.07); opacity: 1; }
+    100% { transform: rotate(-1.6deg) scale(1); }
+  }
+  .letterPage, .notePage { position: relative; width: 100%; }
+  .noteTape, .letterPage > .noteTape {
+    position: absolute; top: -12px; left: 50%; width: 86px; height: 28px;
+    margin-left: -43px; background: rgba(255, 236, 170, .78);
+    border: 2px solid rgba(19,41,75,.18); transform: rotate(-3deg);
+    box-shadow: 0 2px 0 rgba(19,41,75,.08); z-index: 3; pointer-events: none;
+  }
+  .notePin {
+    position: absolute; top: -10px; left: 22px; width: 16px; height: 16px;
+    background: #E4572E; border: 3px solid #13294B; border-radius: 50%;
+    box-shadow: 0 3px 0 #13294B; z-index: 4; pointer-events: none;
+  }
+  .notePin::after {
+    content: ""; position: absolute; left: 5px; top: 12px; width: 3px; height: 12px;
+    background: #8899aa; border-radius: 1px;
+  }
+  .noteDonut {
+    position: absolute; top: -16px; right: -12px; width: 52px; height: 52px;
+    border-radius: 50%; background:
+      radial-gradient(circle at center, #FBF6E8 0 9px, transparent 10px),
+      #F4A0B5;
+    border: 3px solid #13294B; box-shadow: 0 3px 0 #13294B;
+    z-index: 4; pointer-events: none; transform: rotate(12deg);
+  }
+  .noteDonut::before, .noteDonut::after {
+    content: ""; position: absolute; border-radius: 2px; pointer-events: none;
+  }
+  .noteDonut::before {
+    width: 8px; height: 3px; background: #FED90F; top: 12px; left: 10px; transform: rotate(-30deg);
+    box-shadow: 16px 6px 0 #1A3A9C, 8px 18px 0 #fff, 22px 16px 0 #FED90F, 4px 26px 0 #E4572E;
+  }
+  .noteDonut::after {
+    width: 8px; height: 3px; background: #1A3A9C; top: 22px; right: 10px; transform: rotate(40deg);
+    box-shadow: -14px -8px 0 #E4572E, -4px 12px 0 #FED90F, -18px 8px 0 #fff;
+  }
+  .noteDonut.letterDonut { width: 44px; height: 44px; top: -12px; right: -10px; }
+  .noteEmoji {
+    font-size: 56px; line-height: 1; text-align: center; margin: 4px 0 8px;
+    filter: drop-shadow(0 3px 0 rgba(19,41,75,.15));
+  }
+  .noteSprinkles {
+    position: absolute; inset: 0; z-index: 5; pointer-events: none; overflow: hidden;
+  }
+  .noteSprinkle {
+    position: absolute; width: 8px; height: 3px; border-radius: 2px;
+    animation: sprinkleFall .7s ease-out forwards;
+  }
+  @keyframes sprinkleFall {
+    0% { transform: translate(0,0) rotate(0deg); opacity: 1; }
+    100% { transform: translate(var(--sx), var(--sy)) rotate(220deg); opacity: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .letterWrap.popIn .letterFrame, .noteWrap.popIn .noteFrame { animation: none; }
+    .noteFrame { transform: none; }
+    .noteSprinkle { animation: none; display: none; }
+  }
+
+  /* ---- v7i: joke card ---- */
+  .kidJoke {
+    display: block; width: 100%; margin: 10px 0 0; padding: 14px 16px 12px;
+    background: #FBF6E8; color: #13294B; border: 4px solid #13294B; border-radius: 24px;
+    box-shadow: 0 5px 0 #13294B; text-align: left; cursor: pointer; font-family: inherit;
+  }
+  .kidJoke .jokeQ { font-weight: 900; font-size: 18px; line-height: 1.3; margin: 0 0 6px; }
+  .kidJoke .jokeA { font-weight: 700; font-size: 16px; line-height: 1.35; margin: 0 0 6px; opacity: .92; }
+  .kidJoke .jokeHint { font-size: 13px; font-weight: 700; opacity: .6; margin: 0; }
+
+  /* ---- v7i: wanted groups ---- */
+  .wantBar { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 8px; }
+  .wantGroup { margin: 0; }
+  .wantGroup + .wantGroup { margin-top: 4px; }
+  .wantHead {
+    display: flex; align-items: center; gap: 8px; width: 100%;
+    margin: 16px 0 10px; padding: 0; background: none; border: 0;
+    color: #13294B; font-family: inherit; font-weight: 900; font-size: 20px;
+    text-align: left; cursor: pointer; min-height: 44px;
+  }
+  .wantGroup:first-child .wantHead { margin-top: 4px; }
+  .wantChev { display: inline-block; width: 1em; font-size: 22px; line-height: 1; }
+  .wantN { font-weight: 800; font-size: 16px; opacity: .7; }
+  .wantDiv {
+    display: flex; justify-content: center; align-items: center; gap: 8px;
+    margin: 18px 0 0; font-size: 18px; line-height: 1; user-select: none;
+    letter-spacing: 1px;
+  }
+  .wantGroup.is-collapsed .wantItems { display: none; }
+  .wantItems { display: flex; flex-direction: column; gap: 10px; }
+  .khunt.wantGrouped { gap: 0; }
+  .khunt.wantGrouped .wantItems { gap: 12px; }
+  .wantActions { margin-top: 6px; align-items: center; }
+  .wantInfoBtn {
+    flex: 0 0 auto; min-width: 44px; font-size: 20px; font-weight: 900; padding: 6px 10px;
+  }
+  .wantInfo { display: flex; flex-direction: column; gap: 10px; }
+  .wantRef {
+    min-height: 140px; background: #FBF6E8; border: 3px solid #13294B; border-radius: 16px;
+    display: flex; align-items: center; justify-content: center; overflow: hidden;
+  }
+  .wantRef img { max-width: 100%; max-height: 220px; object-fit: contain; display: block; }
+  .wantRefLab { font-weight: 800; font-size: 14px; margin: 0; }
+  .wantRefPh { font-weight: 700; text-align: center; padding: 18px 12px; opacity: .8; }
+
+  /* ---- v7i: dad rewards editor ---- */
+  .rwEditHead { font-weight: 800; font-size: 14px; margin: 0 0 8px; }
+  #rwEdit .rwItem input[type=text], #rwEdit .rwItem input[type=number],
+  #rwRules input[type=number] {
+    border: 4px solid #13294B; border-radius: 14px; font-size: 18px; font-weight: 700;
+    min-height: 52px;
+  }
+  .rwOnRow { display: flex; align-items: center; gap: 8px; font-weight: 800; min-height: 44px; }
+  .rwAdd {
+    width: 100%; min-height: 52px; border: 4px dashed #13294B; background: #E6F4F8;
+    border-radius: 16px; font-weight: 900; font-size: 18px; cursor: pointer; font-family: inherit;
+    color: #13294B;
+  }
+  #rwSaveBtn.saved { background: #7BD389; }
+
+
+  .noteChaseSay {
+    position: fixed; z-index: 6; margin: 0; padding: 4px 10px;
+    background: #FED90F; color: #13294B; border: 3px solid #13294B; border-radius: 999px;
+    font-weight: 900; font-size: 16px; pointer-events: none;
+    box-shadow: 0 3px 0 #13294B;
+  }
+  .noteSkip {
+    position: absolute; z-index: 6; left: 50%; bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    transform: translateX(-50%); background: none; border: 0; padding: 8px 12px;
+    color: #13294B; font: inherit; font-size: 14px; font-weight: 700;
+    text-decoration: underline; cursor: pointer; opacity: .85;
+  }
+  .noteWobble { animation: noteWobble .28s ease; }
+  @keyframes noteWobble {
+    0% { transform: rotate(0) scale(1); }
+    30% { transform: rotate(-9deg) scale(1.06); }
+    60% { transform: rotate(8deg) scale(1.05); }
+    100% { transform: rotate(0) scale(1); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .noteWobble { animation: none; }
+  }
+
+
+  .kfeatures { display: flex; flex-direction: column; gap: 10px; margin: 12px 0 14px; }
+  .kfeature {
+    display: flex; flex-direction: row; align-items: center; gap: 14px; width: 100%;
+    text-align: left; border: 4px solid var(--ink); border-radius: 24px;
+    min-height: 88px; padding: 12px 16px; box-sizing: border-box;
+    font-family: inherit; color: var(--ink); cursor: pointer;
+    box-shadow: 0 5px 0 var(--ink);
+  }
+  .kfeature > span:first-child { font-size: 42px; line-height: 1; flex: 0 0 auto; }
+  .kfeatTxt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .kfeature b { font-size: 22px; font-weight: 900; }
+  .kfeature small { font-size: 15px; font-weight: 700; }
+  .kfeature.yel { background: var(--yel); }
+  .kfeature.pinkL { background: var(--pinkL); }
+
 </style>
 
 
@@ -464,22 +649,36 @@
   <div id="busy" class="busy" hidden><div class="spinner"></div><div id="busyText">Just a sec…</div></div>
 
   <div id="dadLetter" class="letterWrap" hidden>
-    <article class="letterPage" role="dialog" aria-modal="true" aria-labelledby="letterTitle">
-      <div class="letterBar">The FatherSon Simpsons Collection</div>
-      <div class="letterInner" id="letterInner"></div>
-      <button type="button" class="btn yel letterGo" data-act="letterGo">Let’s go!</button>
-    </article>
+    <div class="letterSky" aria-hidden="true"></div>
+    <div class="letterFrame">
+      <article class="letterPage" role="dialog" aria-modal="true" aria-labelledby="letterTitle">
+        <div class="noteTape" aria-hidden="true"></div>
+        <div class="noteDonut letterDonut" aria-hidden="true"></div>
+        <div class="letterBar">The FatherSon Simpsons Collection</div>
+        <div class="letterInner" id="letterInner"></div>
+        <button type="button" class="btn yel letterGo" data-act="letterGo">Let’s go!</button>
+      </article>
+    </div>
   </div>
 
   <div id="dadNote" class="noteWrap" hidden>
-    <article class="notePage" role="dialog" aria-modal="true" aria-labelledby="noteTitle">
-      <div class="letterBar" id="noteTitle">A note from Dad</div>
-      <div class="noteInner">
-        <p id="noteBody"></p>
-        <div class="letterSign" id="noteSign"><p class="dad">Dad x</p></div>
-      </div>
-      <button type="button" class="btn yel letterGo" data-act="noteGo">Aww thanks!</button>
-    </article>
+    <div class="letterSky" aria-hidden="true"></div>
+    <div class="noteFrame">
+      <article class="notePage" role="dialog" aria-modal="true" aria-labelledby="noteTitle">
+        <div class="notePin" aria-hidden="true"></div>
+        <div class="noteTape" aria-hidden="true"></div>
+        <div class="noteDonut" aria-hidden="true"></div>
+        <div class="letterBar" id="noteTitle">A note from Dad</div>
+        <div class="noteInner">
+          <div class="noteEmoji" id="noteEmoji" aria-hidden="true"></div>
+          <p id="noteBody"></p>
+          <div class="letterSign" id="noteSign"><p class="dad">Dad x</p></div>
+        </div>
+        <button type="button" class="btn yel letterGo" data-act="noteGo" id="noteGoBtn">Aww thanks!</button>
+      </article>
+    </div>
+    <p class="noteChaseSay" id="noteChaseSay" hidden></p>
+    <button type="button" class="noteSkip" id="noteSkip" data-act="noteSkip" hidden>skip</button>
   </div>
 
   
@@ -487,7 +686,7 @@
   (function () {
     'use strict';
     var API = "https://script.google.com/macros/s/AKfycbwSO6lF3RuWl0oihI0plwrpb2UKTVDG699nbfXpsiD9y-ZIlRxf44L4SZgw7whRzpeF/exec";
-    var VER = "v7h-20261121";
+    var VER = "v7i-20261121";
     // Plain fetch with no cookies, so Google's multi-account sign-in never gets involved.
     function post(fn, args) {
       return fetch(API, {
