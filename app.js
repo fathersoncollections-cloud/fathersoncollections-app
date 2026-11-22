@@ -281,6 +281,15 @@
     var t = kidSafeText([it.name, it.range, it.series].join(' '));
     return !KID_UNSAFE_RE.test(t);
   }
+  /* Owned items with no photo folder are treated as unfilmed presents and stay hidden in Son's mode. */
+  function kidVisible(it) {
+    if (!kidSafe(it)) return false;
+    if (isOwned(it) && !it.folderId) return false;
+    return true;
+  }
+  function filterKidPayload(list) {
+    return (list || []).filter(function (it) { return kidVisible(it); });
+  }
 
   /* ================= v4: fuzzy "Do I own it?" ================= */
   var OWNED_ST = ['Owned', 'On order', 'For sale'];
@@ -325,7 +334,7 @@
   function ownResultHtml(query) {
     var q = String(query || '').trim();
     if (q.length < 2) return '';
-    var items = (S.items || []).filter(function (it) { return !neverShow(it.name) && (!S.kid || kidSafe(it)); });
+    var items = (S.items || []).filter(function (it) { return !neverShow(it.name) && (!S.kid || kidVisible(it)); });
     var owned = fuzzyFind(q, items.filter(isOwned), 5);
     var wantedItems = fuzzyFind(q, items.filter(function (it) { return it.status === 'Wanted'; }), 2);
     var wl = fuzzyFind(q, (S.homeWanted || []).filter(function (w) { return !neverShow(w.name); }).map(function (w) { return { name: w.name, range: w.range, key: '', status: 'Wanted' }; }), 2);
@@ -361,7 +370,7 @@
   function itemBarcode(it) { return (it && (it.bc || localBarcodes()[it.key])) || ''; }
   function itemsByBarcode(code) {
     var k = bcKey(code); if (!k) return [];
-    return (S.items || []).filter(function (it) { var b = itemBarcode(it); return b && bcKey(b) === k && !neverShow(it.name) && (!S.kid || kidSafe(it)); });
+    return (S.items || []).filter(function (it) { var b = itemBarcode(it); return b && bcKey(b) === k && !neverShow(it.name) && (!S.kid || kidVisible(it)); });
   }
   function saveBarcodeTo(key, name, code) {
     code = bcDigits(code);
@@ -906,9 +915,13 @@
     return call('getBootstrap', S.kid ? KID_ROLE : S.role).then(function (b) {
       var privNow = isPriv() && !S.kid;
       b.items = (b.items || []).filter(function (it) { return !neverShow(it.name) && (privNow || !sonHidden(it.name)); });
+      if (S.kid) b.items = filterKidPayload(b.items);
       S.boot = b; S.items = b.items;
-      prefetchThumbs(S.kid ? b.items.filter(function (it) { return isOwned(it) && kidSafe(it); }) : b.items);
-      return IDB.qAll().then(function (q) { NET.queueLen = q.length; q.forEach(applyQueued); }, noop).then(function () { done(); renderNetBar(); return b; });
+      prefetchThumbs(S.kid ? b.items.filter(function (it) { return isOwned(it) && kidVisible(it); }) : b.items);
+      return IDB.qAll().then(function (q) { NET.queueLen = q.length; q.forEach(applyQueued); }, noop).then(function () {
+        if (S.kid) { S.items = filterKidPayload(S.items || []); if (S.boot) S.boot.items = S.items; }
+        done(); renderNetBar(); return b;
+      });
     });
   }
   function itemByKey(key) { for (var i = 0; i < S.items.length; i++) if (S.items[i].key === key) return S.items[i]; return null; }
@@ -1349,7 +1362,7 @@
   }
   function kidItems() {
     var idn = function (it) { var m = String(it.id || '').match(/(\d+)\s*$/); return m ? +m[1] : 0; };
-    return (S.items || []).filter(function (it) { return isOwned(it) && kidSafe(it); }).sort(function (a, b) { return idn(b) - idn(a); });   // newest finds first
+    return (S.items || []).filter(function (it) { return isOwned(it) && kidVisible(it); }).sort(function (a, b) { return idn(b) - idn(a); });   // newest finds first
   }
   function kidTile(it) {
     return '<button class="ktile" data-act="kidItem" data-key="' + esc(it.key) + '">' + thumbHtml(it) + '<span class="kname">' + esc(it.name) + '</span></button>';
@@ -1399,24 +1412,10 @@
       var h = '<h1>\uD83E\uDDF8 Our stuff</h1><div class="search"><input id="kidQ" type="search" class="ownInput" placeholder="\uD83D\uDD0D Find something\u2026" value="' + esc(q) + '" autocomplete="off"></div><div id="kidGrid"></div>';
       setMain(h);
       var draw = function () {
-        var html = '';
-        if (q) {
-          var list = fuzzyFind(q, all, 60).map(function (x) { return x.it; });
-          html = '<p class="hint">' + list.length + ' thing' + (list.length === 1 ? '' : 's') + ' found</p><div class="kstuff">' + list.map(kidTile).join('') + '</div>';
-        } else {
-          var film = all.filter(function (it) { return !it.folderId; });
-          var got = all.filter(function (it) { return it.folderId; });
-          var shown = got.slice(0, S.kidShown || 40);
-          html = '<p class="hint">' + all.length + ' thing' + (all.length === 1 ? '' : 's') + ' - tap one to see it or add a photo</p>';
-          if (film.length) {
-            html += '<div class="kstuffFilm"><h2>D\u2019oh! Still to film</h2><p class="hint">' + film.length + ' with no photo yet — tap one to add one</p>' +
-              '<div class="kstuff">' + film.map(kidTile).join('') + '</div></div>';
-          }
-          html += (film.length ? '<h2 class="kstuffGot">Got a photo</h2>' : '') +
-            '<div class="kstuff">' + shown.map(kidTile).join('') + '</div>' +
-            (got.length > shown.length ? '<p class="center"><button class="btn" data-act="kidMore">Show more</button></p>' : '');
-        }
-        $('kidGrid').innerHTML = html;
+        var list = q ? fuzzyFind(q, all, 60).map(function (x) { return x.it; }) : all;
+        var shown = q ? list : list.slice(0, S.kidShown || 40);
+        $('kidGrid').innerHTML = '<p class="hint">' + list.length + ' thing' + (list.length === 1 ? '' : 's') + (q ? ' found' : ' - tap one to see it or add a photo') + '</p><div class="kstuff">' + shown.map(kidTile).join('') + '</div>' +
+          (!q && list.length > shown.length ? '<p class="center"><button class="btn" data-act="kidMore">Show more</button></p>' : '');
         watchThumbs();
       };
       var t = null;
@@ -1427,7 +1426,7 @@
   SCREENS.kidItem = function (p) {
     loadBoot().then(function () {
       var it = itemByKey(p.key);
-      if (!it || !kidSafe(it)) { go('kidStuff', {}, true); return; }
+      if (!it || !kidVisible(it)) { go('kidStuff', {}, true); return; }
       S.current = it;
       var t = it.folderId ? S.thumbs[it.folderId] : null;
       var heroWrap;
@@ -3179,7 +3178,7 @@
   }
 
   function applyAddBarcode(digits) {
-    var A = addState(), hits = itemsByBarcode(digits).filter(function (it) { return isOwned(it) && !neverShow(it.name) && (!S.kid || kidSafe(it)); });
+    var A = addState(), hits = itemsByBarcode(digits).filter(function (it) { return isOwned(it) && !neverShow(it.name) && (!S.kid || kidVisible(it)); });
     A.barcode = digits;
     startBarcodeLookup(digits);
     if (!hits.length) { go('add', {}, true); return; }
@@ -4570,7 +4569,7 @@ SCREENS.who = function () {
 
   /* ---------------- v7q: milestones, on this day, set bars, swaps, week card, spin the wheel ---------------- */
   function funOwned() {
-    return (S.kid ? (typeof kidItems === 'function' ? kidItems() : (S.items || []).filter(function (it) { return isOwned(it) && kidSafe(it); })) : (S.items || []).filter(function (it) { return isOwned(it) && !neverShow(it.name); }));
+    return (S.kid ? (typeof kidItems === 'function' ? kidItems() : (S.items || []).filter(function (it) { return isOwned(it) && kidVisible(it); })) : (S.items || []).filter(function (it) { return isOwned(it) && !neverShow(it.name); }));
   }
   function milestoneMarks(n) {
     var out = [425, 450, 500], x = 550;
@@ -4645,7 +4644,7 @@ SCREENS.who = function () {
     var today = londonDay(), parts = today.split('-'), mo = +parts[1], day = +parts[2], yr = +parts[0];
     var out = [], seen = {};
     function add(it, when, kind, year) {
-      if (!it || (S.kid && !kidSafe(it))) return;
+      if (!it || (S.kid && !kidVisible(it))) return;
       if (neverShow(it.name)) return;
       var k = (it.key || it.name) + '|' + kind + '|' + year;
       if (seen[k]) return;
@@ -4800,7 +4799,7 @@ SCREENS.who = function () {
     Promise.all([call('getDuplicates', S.kid ? KID_ROLE : S.role), loadBoot().catch(function () { return null; })]).then(function (res) {
       done();
       var d = res[0] || { groups: [], forSale: [] };
-      var ok = function (it) { return !neverShow(it.name) && (!S.kid || kidSafe(it)); };
+      var ok = function (it) { return !neverShow(it.name) && (!S.kid || kidVisible(it)); };
       var groups = (d.groups || []).map(function (g) { return { name: g.name, copies: g.copies, items: (g.items || []).filter(ok) }; }).filter(function (g) { return g.items.length && !neverShow(g.name); });
       var h = backBtn() + '<h1>\uD83D\uDD01 Doubles to swap</h1><p class="hint">Things we own more than once \u2014 handy if we want to swap. Tap a photo to open it.' + (S.kid ? '' : ' (For sale / values stay on Spares.)') + '</p>';
       if (!groups.length) h += '<div class="nudge">No doubles found just now.</div>';
@@ -4828,7 +4827,7 @@ SCREENS.who = function () {
       done();
       var hist = r[1], priv = isPriv();
       if (!hist) { setMain(backBtn() + '<h1>\uD83D\uDDD3\uFE0F Item history</h1><div class="nudge">This needs the latest Apps Script (v4.3). Ask ' + esc(PRIV) + ' to paste it in - then this page fills itself from the sheet.</div>'); return; }
-      var items = (S.items || []).filter(function (it) { return !neverShow(it.name) && (priv || !sonHidden(it.name)); });
+      var items = (S.items || []).filter(function (it) { return !neverShow(it.name) && (priv || !sonHidden(it.name)) && (!S.kid || kidVisible(it)); });
       var dated = [], undated = [];
       items.forEach(function (it) { var h = hist[it.key], d = whenOf(h); if (d) dated.push({ it: it, h: h, d: d }); else undated.push(it); });
       dated.sort(function (a, b) { return b.d.t - a.d.t || (b.d.p === 'd') - (a.d.p === 'd'); });
@@ -5139,9 +5138,10 @@ SCREENS.who = function () {
   function jobsCardHtml(r, kid) { return waysToEarnHtml(r, kid); }
   function stillToFilmItems() {
     var idn = function (it) { var m = String(it.id || '').match(/(\d+)\s*$/); return m ? +m[1] : 0; };
+    if (S.kid) return [];
     return (S.items || []).filter(function (it) {
-      if (it.folderId || !isOwned(it) || neverShow(it.name)) return false;
-      return S.kid ? kidSafe(it) : !sonHidden(it.name);
+      if (it.folderId || !isOwned(it) || neverShow(it.name) || sonHidden(it.name)) return false;
+      return true;
     }).sort(function (a, b) { return idn(b) - idn(a) || (b.row || 0) - (a.row || 0); });
   }
   function stillToFilmCardHtml() {
@@ -5170,6 +5170,7 @@ SCREENS.who = function () {
   function paintStillToFilm() {
     var el = $('kidFilm') || $('homeFilm');
     if (!el) return;
+    if (S.kid) { el.innerHTML = ''; return; }
     el.innerHTML = stillToFilmCardHtml();
     if (el.innerHTML) watchThumbs();
   }
