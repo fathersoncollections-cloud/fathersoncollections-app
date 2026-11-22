@@ -281,10 +281,14 @@
     var t = kidSafeText([it.name, it.range, it.series].join(' '));
     return !KID_UNSAFE_RE.test(t);
   }
-  /* Owned items with no photo folder are treated as unfilmed presents and stay hidden in Son's mode. */
+  /* Christmas presents hidden from Son until Dad says otherwise. By Item ID, so adding photos later does not reveal them. */
+  var KID_PRESENT_IDS = { 'FS-0417':1, 'FS-0416':1, 'FS-0415':1, 'FS-0414':1, 'FS-0413':1, 'FS-0312':1, 'FS-0278':1, 'FS-0276':1, 'FS-0275':1, 'FS-0269':1, 'FS-0268':1, 'FS-0266':1, 'FS-0208':1, 'FS-0207':1, 'FS-0104':1, 'FS-0097':1, 'FS-0088':1, 'FS-0066':1, 'FS-0065':1, 'FS-0062':1, 'FS-0027':1, 'FS-0026':1, 'FS-0025':1, 'FS-0016':1, 'FS-0003':1, 'FS-0002':1, 'FS-0001':1 };
+  function isKidPresent(it) {
+    var id = String((it && it.id) || '').toUpperCase();
+    return !!(id && KID_PRESENT_IDS[id]);
+  }
   function kidVisible(it) {
-    if (!kidSafe(it)) return false;
-    if (isOwned(it) && !it.folderId) return false;
+    if (!kidSafe(it) || isKidPresent(it)) return false;
     return true;
   }
   function filterKidPayload(list) {
