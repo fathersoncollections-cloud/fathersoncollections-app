@@ -1241,12 +1241,13 @@
     }, Promise.resolve()).then(function () {
       done();
       if (S.kid) bumpKid('kidPhotos', n);
-      if (pending) toast(n === 1 ? 'Nice one! Dad will have a look, then you get 10 points.' : 'Nice one! Dad will have a look at the photos.', 'good');
+      if (pending) { var ppts = (RW && RW.points && RW.points.photo) || 0; toast(n === 1 ? ('Nice one! Dad will have a look' + (ppts ? ', then you get ' + ppts + ' points.' : '.')) : 'Nice one! Dad will have a look at the photos.', 'good'); }
       else {
         toast(target.makeMain ? '\u2B50 New main photo saved. The old one is still in the folder.' : '\uD83C\uDF89 Saved ' + (n === 1 ? names[0] : n + ' files') + '. Nice one!', 'good');
         var it = itemByKey(target.key); if (it && it.folderId) forgetThumb(it.folderId);
         if (S.boot && S.boot.tiles && S.boot.tiles.photos.next && S.boot.tiles.photos.next.key === target.key) S.boot = null;
       }
+      S.photoTodo = null;
       if (S.screen === 'item' || S.screen === 'kidItem') go(S.screen, S.params, true);
       else if (S.screen === 'photos' || S.screen === 'home' || S.screen === 'kid' || S.screen === 'kidStuff') { S.boot = null; go(S.screen, S.params, true); }
     }).catch(function (e) { oops(e); if (n) toast('Saved ' + n + ', but one didn\u2019t go. Try that one again from the item page.', 'oops'); });
@@ -1339,7 +1340,7 @@
 
   /* ================= v4: Son's mode (big tiles, photos, no money, nothing Christmassy) ================= */
   var KID_ROLE = THEME.roles.filter(function (r) { return r !== PRIV; })[0] || 'Son';
-  var KID_SCREENS = ['kid', 'kidStuff', 'kidItem', 'kidHunt', 'kidBadges', 'kidRewards', 'kidNotes', 'pin', 'add', 'swaps', 'wheel', 'checklists', 'checklist'];
+  var KID_SCREENS = ['kid', 'kidStuff', 'kidItem', 'kidHunt', 'kidBadges', 'kidRewards', 'kidNotes', 'pin', 'add', 'swaps', 'wheel', 'checklists', 'checklist', 'photos'];
   function enterKid() {
     LS.set('kidPrevRole', S.role || '');
     clearDadToken();                    // money needs the PIN again after Son's mode
@@ -1412,6 +1413,8 @@
   };
   SCREENS.kidStuff = function () {
     loadBoot().then(function () {
+      return loadPhotoTodo().catch(function () { return []; });
+    }).then(function () {
       var all = kidItems(), q = S.kidQ || '';
       var h = '<h1>\uD83E\uDDF8 Our stuff</h1><div class="search"><input id="kidQ" type="search" class="ownInput" placeholder="\uD83D\uDD0D Find something\u2026" value="' + esc(q) + '" autocomplete="off"></div><div id="kidGrid"></div>';
       setMain(h);
@@ -1426,8 +1429,11 @@
           var shown = got.slice(0, S.kidShown || 40);
           html = '<p class="hint">' + all.length + ' thing' + (all.length === 1 ? '' : 's') + ' - tap one to see it or add a photo</p>';
           if (film.length) {
-            html += '<div class="kstuffFilm"><h2>D\u2019oh! Still to film</h2><p class="hint">' + film.length + ' to film — tap one when you\u2019ve taken photos</p>' +
-              '<div class="kstuff">' + film.map(function (it) { return kidTile(it, 'filmAsk'); }).join('') + '</div></div>';
+            var filmShown = film.slice(0, 8);
+            html += '<div class="kstuffFilm"><h2>D\u2019oh! Still to film</h2><p class="hint">' + film.length + ' to film — the same list Dad has. Tap one to take a photo, then he takes a look.</p>' +
+              '<div class="kstuff">' + filmShown.map(function (it) { return kidTile(it, 'filmAsk'); }).join('') + '</div>' +
+              (film.length > filmShown.length ? '<p class="center"><button type="button" class="btn small" data-act="go" data-to="photos">See all ' + film.length + '</button></p>' : '') +
+              '</div>';
           }
           html += (film.length ? '<h2 class="kstuffGot">Got a photo</h2>' : '') +
             '<div class="kstuff">' + shown.map(kidTile).join('') + '</div>' +
@@ -4188,9 +4194,16 @@ SCREENS.who = function () {
   };
 
   SCREENS.photos = function () {
-    busy('Finding what needs photos\u2026');
-    call('getPhotoTodo', S.role).then(function (list) {
+    busy(S.kid ? 'Finding things to film\u2026' : 'Finding what needs photos\u2026');
+    loadPhotoTodo(true).then(function (list) {
       done();
+      if (S.kid) {
+        var h = backBtn() + '<h1>D\u2019oh! Still to film</h1><p class="hint">' + list.length + ' things to film. Tap Take photo, then Dad takes a look and you get the points when he says yes. No faces in shot.</p><div class="list">' +
+          list.map(function (it) { return '<div class="li">' + thumbHtml(it) + '<div class="grow" data-act="kidItem" data-key="' + esc(it.key) + '">' + esc(it.name) + '<small>' + esc(it.range || '') + '</small></div><button class="btn main small" data-act="filmAsk" data-key="' + esc(it.key) + '">\uD83D\uDCF7 Take photo</button></div>'; }).join('') + '</div>';
+        setMain(h);
+        watchThumbs();
+        return;
+      }
       setMain(backBtn() + '<h1>\uD83D\uDCF8 Photos to take</h1><p class="hint">' + list.length + ' items. Tap \u201CTake photo\u201D - it saves straight into that item\u2019s folder. No faces in shot.</p><div class="list">' +
         list.map(function (it) { return '<div class="li"><div class="grow" data-act="item" data-key="' + esc(it.key) + '">' + esc(it.name) + '<small>' + esc(it.range) + '</small></div><button class="btn main small" data-act="snapFor" data-key="' + esc(it.key) + '">\uD83D\uDCF7 Take photo</button></div>'; }).join('') + '</div>');
     }).catch(oops);
@@ -5154,12 +5167,21 @@ SCREENS.who = function () {
     return h + '</div>';
   }
   function jobsCardHtml(r, kid) { return waysToEarnHtml(r, kid); }
+  function loadPhotoTodo(force) {
+    if (!force && S.photoTodo && S.photoTodo.list) return Promise.resolve(S.photoTodo.list);
+    return call('getPhotoTodo', S.kid ? KID_ROLE : S.role).then(function (list) {
+      list = list || [];
+      if (S.kid) list = list.filter(function (it) { return kidSafe(it) && !isKidPresent(it); });
+      S.photoTodo = { list: list };
+      return list;
+    });
+  }
   function stillToFilmItems() {
     var idn = function (it) { var m = String(it.id || '').match(/(\d+)\s*$/); return m ? +m[1] : 0; };
+    if (S.kid) return (S.photoTodo && S.photoTodo.list) ? S.photoTodo.list.slice() : [];
     return (S.items || []).filter(function (it) {
-      if (it.folderId || !isOwned(it) || neverShow(it.name)) return false;
-      if (S.kid) return kidVisible(it);
-      return !sonHidden(it.name);
+      if (it.folderId || !isOwned(it) || neverShow(it.name) || sonHidden(it.name)) return false;
+      return true;
     }).sort(function (a, b) { return idn(b) - idn(a) || (b.row || 0) - (a.row || 0); });
   }
   function stillToFilmCardHtml() {
@@ -5169,7 +5191,7 @@ SCREENS.who = function () {
     var h = '<div class="filmCard">' +
       '<h2>D\u2019oh! Still to film</h2>' +
       '<p class="waysSub">' + (kid
-        ? 'Things you can film. Tap one when you\u2019ve taken photos, then Dad takes a look and you get the points when he says yes.'
+        ? 'The same photos Dad still needs. Tap one to take a photo, then he takes a look and you get the points when he says yes.'
         : 'Owned items with no photo folder yet. Tap one to open it and add a photo.') + '</p>' +
       '<div class="filmRows">';
     shown.forEach(function (it) {
@@ -5180,7 +5202,7 @@ SCREENS.who = function () {
     });
     h += '</div>';
     if (list.length > cap) {
-      if (kid) h += '<button type="button" class="btn small waysOpen" data-act="go" data-to="kidStuff">See all ' + list.length + '</button>';
+      if (kid) h += '<button type="button" class="btn small waysOpen" data-act="go" data-to="photos">See all ' + list.length + '</button>';
       else h += '<button type="button" class="btn small waysOpen" data-act="filmSeeAll">See all ' + list.length + '</button>';
     }
     return h + '</div>';
@@ -5188,12 +5210,20 @@ SCREENS.who = function () {
   function paintStillToFilm() {
     var el = $('kidFilm') || $('homeFilm');
     if (!el) return;
-    el.innerHTML = stillToFilmCardHtml();
-    if (el.innerHTML) watchThumbs();
+    var paint = function () {
+      if (el !== ($('kidFilm') || $('homeFilm'))) return;
+      el.innerHTML = stillToFilmCardHtml();
+      if (el.innerHTML) watchThumbs();
+    };
+    if (S.kid) loadPhotoTodo().then(paint, paint);
+    else paint();
   }
   function filmAskUI(key) {
     var it = itemByKey(key);
-    if (!it || (S.kid && !kidVisible(it))) return;
+    if (!it && S.photoTodo && S.photoTodo.list) {
+      for (var i = 0; i < S.photoTodo.list.length; i++) if (S.photoTodo.list[i].key === key) { it = S.photoTodo.list[i]; break; }
+    }
+    if (!it || (S.kid && !(kidSafe(it) && !isKidPresent(it)))) return;
     var pts = 0;
     try { pts = (RW && RW.points && RW.points.photo) || (S.rewards && S.rewards.points && S.rewards.points.photo) || 0; } catch (eP) { pts = 0; }
     var ptsBit = pts > 0 ? ' You get ' + pts + ' points when he says yes.' : ' You get the points when he says yes.';
@@ -5212,7 +5242,8 @@ SCREENS.who = function () {
   }
   function paintJobs(r) { paintWaysToEarn(r); }
   function runEarnJob(kind) {
-    if (kind === 'photo' || kind === 'update') go(S.kid ? 'kidStuff' : 'collection');
+    if (kind === 'photo') go('photos');
+    else if (kind === 'update') go(S.kid ? 'kidStuff' : 'collection');
     else if (kind === 'add') { S.add = null; go('add'); }
     else if (kind === 'found') go(S.kid ? 'kidHunt' : 'wanted');
     else if (kind === 'streak') toast(S.kid ? 'Help today with a photo, a find or a new item to keep your streak going!' : 'A bonus is added when he helps on 3 days in a row.', 'good');
