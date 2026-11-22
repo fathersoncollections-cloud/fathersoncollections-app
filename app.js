@@ -1355,8 +1355,8 @@
       var mine = kidItems();
       var h = '<div class="kidHead"><div class="mascot small">' + THEME.mascotSvg.replace(/fsBite/g, 'fsBiteK') + '</div><h1>Hiya wee man \uD83D\uDC4B</h1></div>' +
         jokeHtml() +
-        '<div id="kidRewardsHome"></div>' +
         funWorthHtml() +
+        '<div id="kidRewardsHome"></div>' +
         '<div class="kfeatures">' +
         '<button type="button" class="kfeature pinkL" data-act="go" data-to="kidBadges"><span>\uD83C\uDFC6</span><span class="kfeatTxt"><b>My badges</b><small id="kidBadgeN">see what you\u2019ve earned</small></span></button>' +
         '<div id="kidMissions"></div>' +
