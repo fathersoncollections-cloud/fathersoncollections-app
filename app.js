@@ -97,7 +97,16 @@
       },
       qAdd: function (v) { return tx('queue', 'readwrite', function (s) { return s.add(v); }); },
       qAll: function () { return tx('queue', 'readonly', function (s) { return s.getAll(); }); },
-      qDel: function (id) { return tx('queue', 'readwrite', function (s) { return s.delete(id); }); }
+      qDel: function (id) { return tx('queue', 'readwrite', function (s) { return s.delete(id); }); },
+      keys: function () {
+        return db().then(function (d) {
+          return new Promise(function (res, rej) {
+            var out = [], t = d.transaction('kv', 'readonly'), cur = t.objectStore('kv').openCursor();
+            cur.onsuccess = function () { var c = cur.result; if (c) { out.push(c.key); c.continue(); } };
+            t.oncomplete = function () { res(out); }; t.onerror = function () { rej(t.error); };
+          });
+        });
+      }
     };
   })();
   var NET = {
@@ -1202,7 +1211,7 @@
       bindOwnSearch('kidSearch', 'kidOwnOut');
       checkNewBadges().then(function (B) { var n = B.filter(function (b) { return b.got; }).length; if ($('kidBadgeN')) $('kidBadgeN').textContent = n + ' badge' + (n === 1 ? '' : 's') + ' so far!'; paintMissions(B); }).catch(noop);
       loadHomeWanted().then(function (w) { var n = w.filter(function (x) { return kidSafe(x); }).length; if ($('kidHuntN')) $('kidHuntN').textContent = n + ' to find!'; });
-      loadRewards().then(function (r) { if ($('kidPtsN') && r) $('kidPtsN').textContent = r.balance + ' points \u00B7 ' + r.level.name; paintJobs(r); paintEarnPoints(r); }).catch(noop);
+      loadRewards(true).then(function (r) { if ($('kidPtsN') && r) $('kidPtsN').textContent = r.balance + ' points \u00B7 ' + ((r.level && r.level.name) || ''); try { paintJobs(r); } catch (eJ) {} try { paintEarnPoints(r); } catch (eE) {} }).catch(noop);
       recordBadgeVisit();
       maybeShowLetter();
       bindFunSwipe();
@@ -2514,9 +2523,42 @@
   }
 
   var RW = null;
+  function rwIsActive(x) {
+    if (!x) return false;
+    var v = x.active;
+    if (v === false || v == null || v === '') return false;
+    if (v === true) return true;
+    return !/^(no|false|0|off)$/i.test(String(v).trim());
+  }
+  function rwArr(x) { return Array.isArray(x) ? x : []; }
+  function sortByCost(list) {
+    return rwArr(list).slice().sort(function (a, b) {
+      return ((a && a.cost) || 0) - ((b && b.cost) || 0) || String((a && a.title) || '').localeCompare(String((b && b.title) || ''));
+    });
+  }
+  /* Same live list Son sees: active rewards only, no local/hardcoded defaults. */
+  function activeRewards(r) {
+    if (!r) return [];
+    var all = rwArr(r.allRewards);
+    if (all.length) return sortByCost(all.filter(rwIsActive));
+    return sortByCost(r.rewards);
+  }
+  function forgetRewardsCache(keepKey) {
+    return IDB.keys().then(function (keys) {
+      return Promise.all((keys || []).filter(function (k) {
+        return String(k).indexOf('c|getRewards|') === 0 && k !== keepKey;
+      }).map(function (k) { return IDB.del(k); }));
+    }, function () { return null; });
+  }
   function loadRewards(force) {
+    if (RW && !force && navigator.onLine === false) return Promise.resolve(RW);
+    RW = force ? null : RW;
     if (RW && !force) return Promise.resolve(RW);
-    return call('getRewards', S.kid ? KID_ROLE : S.role).then(function (r) { RW = r; return r; });
+    return call('getRewards', S.kid ? KID_ROLE : S.role).then(function (r) {
+      RW = r;
+      forgetRewardsCache(cacheKey('getRewards', [S.kid ? KID_ROLE : S.role])).catch(noop);
+      return r;
+    });
   }
   function niceWhen(iso) {
     if (!iso) return '';
@@ -2553,28 +2595,32 @@
     busy('Counting your points\u2026');
     loadBoot().then(function () { return loadRewards(true); }).then(function (r) {
       done();
-      var rewards = (r.rewards || []).slice().sort(function (a, b) { return (a.cost - b.cost) || String(a.title || '').localeCompare(String(b.title || '')); }).map(function (x) {
-        var pending = (r.requests || []).some(function (q) { return q.title === x.title && q.status === 'Pending'; });
+      var rewards = activeRewards(r).map(function (x) {
+        var pending = rwArr(r.requests).some(function (q) { return q.title === x.title && q.status === 'Pending'; });
         var need = x.cost - (r.balance || 0);
         var btn = pending ? '<span class="pill yel">Asked \u2014 waiting for Dad</span>' :
           (need > 0 ? '<span class="hint">' + need + ' more points to go</span>' :
             '<button class="btn main" data-act="rwAsk" data-id="' + esc(x.id) + '">Ask Dad</button>');
         return '<div class="rwItem"><div class="row"><b>' + esc(x.title) + '</b><span class="pill">' + x.cost + ' pts</span></div>' + btn + '</div>';
       }).join('');
-      var reqs = (r.requests || []).length ? '<h2>Your asks</h2><div class="rwList">' + r.requests.map(function (q) {
+      var reqs = rwArr(r.requests).length ? '<h2>Your asks</h2><div class="rwList">' + rwArr(r.requests).map(function (q) {
         return '<div class="rwItem"><b>' + esc(q.title) + '</b><small>' + esc(q.status) + (q.when ? ' \u00B7 ' + esc(niceWhen(q.when)) : '') + '</small></div>';
       }).join('') + '</div>' : '';
-      var recent = (r.recent || []).length ? '<h2>Lately</h2><div class="list rwLog">' + r.recent.slice(0, 12).map(function (x) {
-        return '<div class="li"><div class="grow">' + esc(rwAction(x.action)) + (x.item ? '<small>' + esc(x.item) + '</small>' : '') + '</div><span class="pill">' + (x.points > 0 ? '+' : '') + x.points + '</span></div>';
-      }).join('') + '</div>' : '';
-      setMain(backBtn() + '<h1>\u2B50 My points</h1>' + rwLevelCard(r) +
-        (function () {
+      var recent = '';
+      try {
+        recent = rwArr(r.recent).length ? '<h2>Lately</h2><div class="list rwLog">' + rwArr(r.recent).slice(0, 12).map(function (x) {
+          return '<div class="li"><div class="grow">' + esc(rwAction(x.action)) + (x.item ? '<small>' + esc(x.item) + '</small>' : '') + '</div><span class="pill">' + (x.points > 0 ? '+' : '') + x.points + '</span></div>';
+        }).join('') + '</div>' : '';
+      } catch (eRec) { recent = ''; }
+      var extra = '';
+      try {
         var photo = ptsVal(r, 'photo', 10);
-        return (r.waiting ? '<div class="nudge">Dad is having a look at ' + r.waiting + ' photo' + (r.waiting === 1 ? '' : 's') + '. You get ' + photo + ' point' + (photo === 1 ? '' : 's') + ' for each one he says yes to.</div>' : '') +
-        jobsCardHtml(r) +
-        earnCardHtml(r) +
-        '<h2>Rewards you can ask for</h2><div class="rwList">';
-      })() +
+        extra += (r.waiting ? '<div class="nudge">Dad is having a look at ' + r.waiting + ' photo' + (r.waiting === 1 ? '' : 's') + '. You get ' + photo + ' point' + (photo === 1 ? '' : 's') + ' for each one he says yes to.</div>' : '');
+      } catch (eWait) { /* keep rewards visible */ }
+      try { extra += jobsCardHtml(r) || ''; } catch (eJobs) { /* live API may lack jobs until v4.7 */ }
+      try { extra += earnCardHtml(r) || ''; } catch (eEarn) { /* keep rewards visible */ }
+      setMain(backBtn() + '<h1>\u2B50 My points</h1>' + rwLevelCard(r) + extra +
+        '<h2>Rewards you can ask for</h2><div class="rwList">' +
         (rewards || '<p class="hint">Dad hasn\u2019t set any rewards yet.</p>') + '</div>' + reqs + recent);
     }).catch(function (e) { done(); setMain(backBtn() + '<h1>\u2B50 My points</h1>' + rwNeedOk()); });
   };
@@ -2596,21 +2642,30 @@
           '<div class="row"><button class="btn green" data-act="rwYes" data-id="' + esc(x.id) + '">Yes (PIN)</button>' +
           '<button class="btn" data-act="rwNo" data-id="' + esc(x.id) + '">Not this time (PIN)</button></div></div>';
       }).join('');
-      var jobRows = (r.allJobs || []).map(function (x) {
-        var done = x.doneToday ? '<span class="pill yel">Done today</span>' :
-          '<button class="btn green" data-act="jobDone" data-id="' + esc(x.id) + '">Done</button>';
-        return '<div class="rwItem" data-id="' + esc(x.id) + '"><p class="rwEditHead">Edit this job</p>' +
-          '<label class="field">Job name <input type="text" class="jobTitle" data-id="' + esc(x.id) + '" value="' + esc(x.title) + '" maxlength="60" autocomplete="off"></label>' +
-          '<label class="field">Points <input type="number" class="jobCost" data-id="' + esc(x.id) + '" value="' + x.cost + '" min="5" step="5"></label>' +
-          '<label class="rwOnRow"><input type="checkbox" class="jobOn" data-id="' + esc(x.id) + '"' + (x.active ? ' checked' : '') + '> On the list</label>' +
-          '<div class="row" style="margin-top:8px">' + done + '</div></div>';
-      }).join('');
-      var all = (r.allRewards || []).map(function (x) {
-        return '<div class="rwItem" data-id="' + esc(x.id) + '"><p class="rwEditHead">Edit this reward</p>' +
+      var jobRows = '';
+      try {
+        jobRows = rwArr(r.allJobs).map(function (x) {
+          var doneBtn = x.doneToday ? '<span class="pill yel">Done today</span>' :
+            '<button class="btn green" data-act="jobDone" data-id="' + esc(x.id) + '">Done</button>';
+          return '<div class="rwItem" data-id="' + esc(x.id) + '"><p class="rwEditHead">Edit this job</p>' +
+            '<label class="field">Job name <input type="text" class="jobTitle" data-id="' + esc(x.id) + '" value="' + esc(x.title) + '" maxlength="60" autocomplete="off"></label>' +
+            '<label class="field">Points <input type="number" class="jobCost" data-id="' + esc(x.id) + '" value="' + x.cost + '" min="5" step="5"></label>' +
+            '<label class="rwOnRow"><input type="checkbox" class="jobOn" data-id="' + esc(x.id) + '"' + (rwIsActive(x) ? ' checked' : '') + '> On the list</label>' +
+            '<div class="row" style="margin-top:8px">' + doneBtn + '</div></div>';
+        }).join('');
+      } catch (eJobs) { jobRows = ''; }
+      function rewardEditRow(x, on) {
+        return '<div class="rwItem' + (on ? '' : ' rwOff') + '" data-id="' + esc(x.id) + '"><p class="rwEditHead">' + (on ? 'On the list' : 'Off the list') + '</p>' +
           '<label class="field">Reward name <input type="text" class="rwTitle" data-id="' + esc(x.id) + '" value="' + esc(x.title) + '" maxlength="60" autocomplete="off"></label>' +
           '<label class="field">Points needed <input type="number" class="rwCost" data-id="' + esc(x.id) + '" value="' + x.cost + '" min="5" step="5"></label>' +
-          '<label class="rwOnRow"><input type="checkbox" class="rwOn" data-id="' + esc(x.id) + '"' + (x.active ? ' checked' : '') + '> On the list</label></div>';
-      }).join('');
+          '<label class="rwOnRow"><input type="checkbox" class="rwOn" data-id="' + esc(x.id) + '"' + (on ? ' checked' : '') + '> On the list</label></div>';
+      }
+      var editorSrc = rwArr(r.allRewards);
+      if (!editorSrc.length) editorSrc = activeRewards(r).map(function (x) { return { id: x.id, title: x.title, cost: x.cost, active: true }; });
+      var onList = sortByCost(editorSrc.filter(rwIsActive));
+      var offList = sortByCost(editorSrc.filter(function (x) { return !rwIsActive(x); }));
+      var all = onList.map(function (x) { return rewardEditRow(x, true); }).join('');
+      var allOff = offList.map(function (x) { return rewardEditRow(x, false); }).join('');
       var pts = (r.points || {});
       var log = (r.log || []).slice(0, 80).map(function (x) {
         return '<div class="li"><div class="grow">' + esc(rwAction(x.action)) + (x.item ? '<small>' + esc(x.item) + (x.detail ? ' \u00B7 ' + esc(x.detail) : '') + '</small>' : (x.detail ? '<small>' + esc(x.detail) + '</small>' : '')) +
@@ -2621,10 +2676,11 @@
         (r.streak ? ' \u00B7 ' + r.streak + '-day streak' : '') + '</div>' +
         '<h2>Photos waiting</h2>' + (q ? '<div class="rwList">' + q + '</div>' : '<p class="hint">None waiting \u2014 you\u2019re all caught up.</p>') +
         '<h2>Reward asks</h2>' + (asks ? '<div class="rwList">' + asks + '</div>' : '<p class="hint">No asks waiting.</p>') +
-        (r.allJobs || r.jobs ? '' : '<div class="nudge">Jobs need a quick Code.gs update on the collection sheet (version 4.7). Until then, rewards still work as usual.</div>') +
-        '<h2>Jobs</h2><p class="hint">Give each job a name and points. Tap Done when it\u2019s finished to award the points (once per job per day). Switch one off rather than deleting it. No money in the names, please.</p><div class="rwList" id="jobEdit">' + jobRows + '</div>' +
-        '<p><button type="button" class="rwAdd" data-act="jobAdd">+ Add job</button></p>' +
-        '<h2>Rewards he can ask for</h2><p class="hint">You can edit the name, the points, or tick \u201COn the list\u201D. Add as many as you like, then tap Save. Switch one off rather than deleting it. No money in the names, please.</p><div class="rwList" id="rwEdit">' + all + '</div>' +
+        (Array.isArray(r.allJobs) || Array.isArray(r.jobs) ? '' : '<div class="nudge">Jobs need a quick Code.gs update on the collection sheet (version 4.7). Until then, rewards still work as usual.</div>') +
+        (Array.isArray(r.allJobs) || Array.isArray(r.jobs) || jobRows ? ('<h2>Jobs</h2><p class="hint">Give each job a name and points. Tap Done when it\u2019s finished to award the points (once per job per day). Switch one off rather than deleting it. No money in the names, please.</p><div class="rwList" id="jobEdit">' + jobRows + '</div>' +
+        '<p><button type="button" class="rwAdd" data-act="jobAdd">+ Add job</button></p>') : '<div class="rwList" id="jobEdit" hidden></div>') +
+        '<h2>Rewards he can ask for</h2><p class="hint">This is the same live list he sees, from the App - Rewards sheet. Tick \u201COn the list\u201D to show or hide one. Switch one off rather than deleting it. No money in the names, please.</p><div class="rwList" id="rwEdit">' + (all || '<p class="hint">No active rewards yet.</p>') + '</div>' +
+        (allOff ? '<h2>Off the list</h2><p class="hint">Hidden from him until you tick them back on. Nothing is deleted.</p><div class="rwList rwOffList" id="rwEditOff">' + allOff + '</div>' : '') +
         '<p><button type="button" class="rwAdd" data-act="rwAdd">+ Add reward</button></p>' +
         '<h2>Points he earns</h2><p class="hint">Change how many points a photo, a tick, or a new item is worth.</p>' +
         '<div class="card" id="rwRules">' +
@@ -2745,7 +2801,7 @@
   }
   function collectRewardsForm() {
     var list = [], bad = '';
-    document.querySelectorAll('#rwEdit .rwItem').forEach(function (el) {
+    document.querySelectorAll('#rwEdit .rwItem, #rwEditOff .rwItem').forEach(function (el) {
       var titleEl = el.querySelector('.rwTitle'), costEl = el.querySelector('.rwCost');
       if (!titleEl || !costEl) return;
       var title = (titleEl.value || '').replace(/\s+/g, ' ').trim();
@@ -3179,7 +3235,7 @@ SCREENS.who = function () {
         call('getValueSummary', S.role).then(function (vs) {
           if (vs && typeof vs.total === 'number' && $('valueBox') && S.screen === 'home') $('valueBox').innerHTML = valueCardHtml(vs);
         }).catch(noop);
-        loadRewards().then(paintRewardsHome).catch(noop);
+        loadRewards(true).then(paintRewardsHome).catch(noop);
       }
     }).catch(oops);
   };
@@ -4413,7 +4469,7 @@ SCREENS.who = function () {
     return '\uD83E\uDDF9';
   }
   function jobsCardHtml(r) {
-    var jobs = ((r && r.jobs) || []).slice();
+    var jobs = rwArr(r && r.jobs).slice();
     if (!jobs.length) return '';
     jobs.sort(function (a, b) { return (a.cost - b.cost) || String(a.title || '').localeCompare(String(b.title || '')); });
     var h = '<div class="jobCard"><h2>Jobs</h2><p class="jobSub">Jobs from Dad \u2014 he taps Done and you get the points</p><div class="jobRows">';

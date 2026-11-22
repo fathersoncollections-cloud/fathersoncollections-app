@@ -949,6 +949,10 @@
 </style>
 
 
+  .rwItem.rwOff { opacity: .55; background: #eef1f4; filter: grayscale(.35); }
+  .rwItem.rwOff .rwEditHead { color: #5b6778; }
+  .rwOffList { margin-bottom: 16px; }
+
   <style>
     #bootScreen{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center;background:#70CCF5;color:#13294B;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;z-index:50}
     #bootScreen img{width:120px;height:120px}
@@ -1034,7 +1038,7 @@
   (function () {
     'use strict';
     var API = "https://script.google.com/macros/s/AKfycbwSO6lF3RuWl0oihI0plwrpb2UKTVDG699nbfXpsiD9y-ZIlRxf44L4SZgw7whRzpeF/exec";
-    var VER = "v7n-20261122";
+    var VER = "v7o-20261122";
     // Plain fetch with no cookies, so Google's multi-account sign-in never gets involved.
     function post(fn, args) {
       return fetch(API, {
