@@ -789,6 +789,10 @@
   .waysCard .jobRows, .waysCard .earnJobs { gap: 6px; }
   .waysCard .jobRow, .waysCard .earnJob { padding: 7px 9px; }
   .waysCard .waysOpen { margin: 8px 0 2px; }
+  .ptsEmojiRow { align-items: flex-end; gap: 8px; }
+  .ptsEmojiField { flex: 0 0 88px; max-width: 88px; }
+  .ptsEmojiField input { text-align: center; font-size: 22px; padding: 6px 4px; }
+  #ptsEdit .rwEditHead, #jobEdit .rwEditHead { margin-bottom: 6px; }
 
 
   .wantRefPlaceholder { width: 100%; height: auto; }
@@ -1410,7 +1414,7 @@
   (function () {
     'use strict';
     var API = "https://script.google.com/macros/s/AKfycbwSO6lF3RuWl0oihI0plwrpb2UKTVDG699nbfXpsiD9y-ZIlRxf44L4SZgw7whRzpeF/exec";
-    var VER = "v7x-20261122";
+    var VER = "v7y-20261122";
     // Plain fetch with no cookies, so Google's multi-account sign-in never gets involved.
     function post(fn, args) {
       return fetch(API, {

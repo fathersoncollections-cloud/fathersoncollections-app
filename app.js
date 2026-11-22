@@ -2508,11 +2508,12 @@
       }).join('');
       var jobRows = '';
       try {
-        jobRows = sortJobsList(rwArr(r.allJobs)).map(function (x) {
+        jobRows = sortJobsList(rwArr(r.allJobs).filter(function (x) { return !x.kind || x.kind !== 'collection'; })).map(function (x) {
           var doneBtn = x.doneToday ? '<span class="pill yel">Done today</span>' :
             (x.pending ? '<span class="pill yel">Waiting for Dad</span>' : '<span class="hint">Son ticks this when it\u2019s done</span>');
           return '<div class="rwItem" data-id="' + esc(x.id) + '"><p class="rwEditHead">Edit this job</p>' +
-            '<label class="field">Job name <input type="text" class="jobTitle" data-id="' + esc(x.id) + '" value="' + esc(x.title) + '" maxlength="60" autocomplete="off"></label>' +
+            '<div class="row wrap ptsEmojiRow"><label class="field ptsEmojiField">Icon <input type="text" class="jobIcon" maxlength="8" value="' + esc(x.icon || x.emoji || '') + '" placeholder="auto" autocomplete="off"></label>' +
+            '<label class="field grow">Job name <input type="text" class="jobTitle" data-id="' + esc(x.id) + '" value="' + esc(x.title) + '" maxlength="60" autocomplete="off"></label></div>' +
             '<label class="field">Points <input type="number" class="jobCost" data-id="' + esc(x.id) + '" value="' + x.cost + '" min="5" step="5"></label>' +
             '<label class="rwOnRow"><input type="checkbox" class="jobOn" data-id="' + esc(x.id) + '"' + (rwIsActive(x) ? ' checked' : '') + '> On the list</label>' +
             '<div class="row" style="margin-top:8px">' + doneBtn + '</div></div>';
@@ -2546,14 +2547,7 @@
         '<h2>Rewards he can ask for</h2><p class="hint">This is the same live list he sees, from the App - Rewards sheet. Tick \u201COn the list\u201D to show or hide one. Switch one off rather than deleting it. No money in the names, please.</p><div class="rwList" id="rwEdit">' + (all || '<p class="hint">No active rewards yet.</p>') + '</div>' +
         (allOff ? '<h2>Off the list</h2><p class="hint">Hidden from him until you tick them back on. Nothing is deleted.</p><div class="rwList rwOffList" id="rwEditOff">' + allOff + '</div>' : '') +
         '<p><button type="button" class="rwAdd" data-act="rwAdd">+ Add reward</button></p>' +
-        '<h2>Points he earns</h2><p class="hint">Change how many points a photo, a tick, or a new item is worth.</p>' +
-        '<div class="card" id="rwRules">' +
-          '<label class="field">Points for a photo (when you say yes) <input type="number" id="rwPtsPhoto" min="0" step="1" value="' + (pts.photo != null ? pts.photo : 10) + '"></label>' +
-          '<label class="field">Points for a tick / found it <input type="number" id="rwPtsTick" min="0" step="1" value="' + (pts.found != null ? pts.found : 5) + '"></label>' +
-          '<label class="field">Points for an update <input type="number" id="rwPtsUpdate" min="0" step="1" value="' + (pts.update != null ? pts.update : 5) + '"></label>' +
-          '<label class="field">Points for a brand new item <input type="number" id="rwPtsAdd" min="0" step="1" value="' + (pts.add != null ? pts.add : 20) + '"></label>' +
-          '<label class="field">Bonus for helping 3 days in a row <input type="number" id="rwPtsStreak" min="0" step="1" value="' + (pts.streak != null ? pts.streak : 15) + '"></label>' +
-        '</div>' +
+        pointRulesEditorHtml(r) +
         '<p class="center"><button class="btn main" data-act="rwSave" id="rwSaveBtn">Save</button></p>' +
         '<h2>Activity log</h2><div class="list rwLog">' + (log || '<p class="hint">Nothing yet.</p>') + '</div>');
       (r.queue || []).forEach(function (p) {
@@ -2624,7 +2618,8 @@
     var el = document.createElement('div');
     el.className = 'rwItem';
     el.innerHTML = '<p class="rwEditHead">New job</p>' +
-      '<label class="field">Job name <input type="text" class="jobTitle" maxlength="60" placeholder="e.g. Clean your room" autocomplete="off"></label>' +
+      '<div class="row wrap ptsEmojiRow"><label class="field ptsEmojiField">Icon <input type="text" class="jobIcon" maxlength="8" placeholder="auto" autocomplete="off"></label>' +
+      '<label class="field grow">Job name <input type="text" class="jobTitle" maxlength="60" placeholder="e.g. Clean your room" autocomplete="off"></label></div>' +
       '<label class="field">Points <input type="number" class="jobCost" min="5" step="5" value="50"></label>' +
       '<label class="rwOnRow"><input type="checkbox" class="jobOn" checked> On the list</label>';
     box.appendChild(el);
@@ -2632,6 +2627,115 @@
     var inp = el.querySelector('.jobTitle'); if (inp) inp.focus();
     var btn = $('rwSaveBtn'); if (btn) { btn.textContent = 'Save'; btn.classList.remove('saved'); }
   }
+
+  var POINT_RULE_DEFAULTS = [
+    { key: 'photo', title: 'Add a photo', desc: 'Snap one of our things. You get the points when Dad says yes.', emoji: '\uD83D\uDCF8', pts: 10 },
+    { key: 'found', title: 'Tick one off the Hunt', desc: 'Found it on Hunt or Wanted? Mark it ours.', emoji: '\u2B50', pts: 5 },
+    { key: 'update', title: 'Update a thing', desc: 'Help fill in details on something we already have.', emoji: '\u270F\uFE0F', pts: 5 },
+    { key: 'add', title: 'Add a new find', desc: 'Save something new to our collection.', emoji: '\uD83D\uDCE6', pts: 20 },
+    { key: 'streak', title: '3-day helper bonus', desc: 'Help on 3 days in a row and get a bonus on top.', emoji: '\uD83D\uDD25', pts: 15 }
+  ];
+  function builtInPointRules(r) {
+    var saved = rwArr(r && r.pointRules);
+    var byKey = {};
+    saved.forEach(function (x) { if (x && x.key) byKey[x.key] = x; });
+    return POINT_RULE_DEFAULTS.map(function (d) {
+      var s = byKey[d.key] || {};
+      return {
+        key: d.key, auto: true,
+        title: s.title || d.title,
+        desc: s.desc || d.desc,
+        emoji: s.emoji || d.emoji,
+        pts: (s.pts != null ? s.pts : ptsVal(r, d.key, d.pts)),
+        active: s.active !== false
+      };
+    });
+  }
+  function customCollectionJobs(r, includeOff) {
+    var list = rwArr(r && (includeOff ? (r.allCollectionJobs || r.collectionJobs) : (r.collectionJobs || r.allCollectionJobs)));
+    if (!includeOff) list = list.filter(function (j) { return j && j.active !== false; });
+    return list.map(function (j) {
+      return { id: j.id, key: j.id, auto: false, title: j.title, desc: j.desc || '', emoji: j.emoji || '\uD83C\uDFA5', pts: j.cost, cost: j.cost, active: j.active !== false, pending: j.pending, pendingId: j.pendingId, doneToday: j.doneToday };
+    });
+  }
+  function pointRuleRowHtml(x) {
+    var auto = !!x.auto;
+    return '<div class="rwItem' + (x.active === false ? ' rwOff' : '') + '" data-key="' + esc(x.key || '') + '" data-id="' + esc(x.id || '') + '" data-auto="' + (auto ? '1' : '0') + '">' +
+      '<p class="rwEditHead">' + (auto ? 'Automatic' : 'Son taps, you approve') + '</p>' +
+      '<div class="row wrap ptsEmojiRow"><label class="field ptsEmojiField">Icon <input type="text" class="ptsEmoji" maxlength="8" placeholder="auto" value="' + esc(x.emoji || '') + '" autocomplete="off"></label>' +
+      '<label class="field grow">Name <input type="text" class="ptsTitle" maxlength="60" value="' + esc(x.title || '') + '" autocomplete="off"></label></div>' +
+      '<label class="field">Description <input type="text" class="ptsDesc" maxlength="160" value="' + esc(x.desc || '') + '" autocomplete="off"></label>' +
+      '<label class="field">Points <input type="number" class="ptsCost" min="' + (auto ? '0' : '5') + '" step="1" value="' + (x.pts != null ? x.pts : (auto ? 0 : 15)) + '"></label>' +
+      '<label class="rwOnRow"><input type="checkbox" class="ptsOn"' + (x.active !== false ? ' checked' : '') + '> On the list</label></div>';
+  }
+  function pointRulesEditorHtml(r) {
+    var built = builtInPointRules(r);
+    var custom = customCollectionJobs(r, true);
+    var rows = sortJobsList(built.concat(custom).map(function (x) { return { title: x.title, cost: x.pts, _x: x }; })).map(function (s) { return pointRuleRowHtml(s._x); }).join('');
+    return '<h2>Collection jobs</h2><p class="hint">The five automatic ones: change the name, the description and the points, or switch one off (it won\u2019t award, and Son won\u2019t see it). You can also add your own \u2014 Son taps them, you approve with your PIN. Switching off doesn\u2019t delete it.</p>' +
+      '<div class="rwList" id="ptsEdit">' + rows + '</div>' +
+      '<p><button type="button" class="rwAdd" data-act="ptsAdd">+ Add a collection job</button></p>';
+  }
+  function collectPointRulesForm() {
+    var rules = [], customJobs = [], bad = '', incomplete = 0, payload = { photo: 10, found: 5, update: 5, add: 20, streak: 15 };
+    document.querySelectorAll('#ptsEdit .rwItem').forEach(function (el) {
+      var auto = el.getAttribute('data-auto') === '1';
+      var key = el.getAttribute('data-key') || '';
+      var title = ((el.querySelector('.ptsTitle') || {}).value || '').replace(/\s+/g, ' ').trim();
+      var desc = ((el.querySelector('.ptsDesc') || {}).value || '').replace(/\s+/g, ' ').trim();
+      var emoji = ((el.querySelector('.ptsEmoji') || {}).value || '').trim();
+      var cost = parseInt((el.querySelector('.ptsCost') || {}).value, 10);
+      var on = el.querySelector('.ptsOn');
+      var active = on ? on.checked : true;
+      if (/[\u00a3$\u20ac]|\b\d+\s*p\b|\bpounds?\b|\bquid\b|\bmoney\b|\bcash\b|\bdollars?\b|\beuros?\b|\bpence\b/i.test(title + ' ' + desc)) bad = 'Keep money out of the names and descriptions.';
+      if (auto) {
+        if (!title) { incomplete++; return; }
+        if (!(cost >= 0 && cost <= 100000)) bad = bad || 'Points should be a whole number from 0 up.';
+        var rec = { key: key, title: title, desc: desc, emoji: emoji, pts: cost, active: active };
+        rules.push(rec);
+        if (key) payload[key] = cost;
+      } else {
+        if (!title) { if ((el.querySelector('.ptsCost') || {}).value) incomplete++; return; }
+        if (!(cost >= 5 && cost <= 100000)) bad = bad || 'Custom collection jobs need a whole number of points from 5 up.';
+        customJobs.push({ id: el.getAttribute('data-id') || '', title: title, desc: desc, emoji: emoji || '\uD83C\uDFA5', cost: cost, active: active });
+      }
+    });
+    payload.rules = rules;
+    payload.customJobs = customJobs;
+    return { payload: payload, rules: rules, customJobs: customJobs, bad: bad, incomplete: incomplete };
+  }
+  function sortPointRulesEditor() {
+    var box = $('ptsEdit'); if (!box) return;
+    var focus = document.activeElement;
+    var rows = Array.prototype.slice.call(box.querySelectorAll('.rwItem'));
+    var named = [], blank = [];
+    rows.forEach(function (el) {
+      var title = (((el.querySelector('.ptsTitle') || {}).value) || '').replace(/\s+/g, ' ').trim();
+      (title ? named : blank).push(el);
+    });
+    named.sort(function (a, b) {
+      var ca = parseInt(((a.querySelector('.ptsCost') || {}).value), 10) || 0;
+      var cb = parseInt(((b.querySelector('.ptsCost') || {}).value), 10) || 0;
+      if (ca !== cb) return ca - cb;
+      var ta = (((a.querySelector('.ptsTitle') || {}).value) || '').trim();
+      var tb = (((b.querySelector('.ptsTitle') || {}).value) || '').trim();
+      return ta.localeCompare(tb, 'en', { sensitivity: 'base' });
+    });
+    named.concat(blank).forEach(function (el) { box.appendChild(el); });
+    if (focus && box.contains(focus) && typeof focus.focus === 'function') {
+      try { focus.focus(); } catch (eF) { /* ignore */ }
+    }
+  }
+  function addPointRuleRow() {
+    var box = $('ptsEdit'); if (!box) return;
+    var wrap = document.createElement('div');
+    wrap.innerHTML = pointRuleRowHtml({ auto: false, title: '', desc: '', emoji: '\uD83C\uDFA5', pts: 15, active: true });
+    box.appendChild(wrap.firstChild);
+    sortPointRulesEditor();
+    var inp = box.querySelector('.rwItem:last-child .ptsTitle'); if (inp) inp.focus();
+    var btn = $('rwSaveBtn'); if (btn) { btn.textContent = 'Save'; btn.classList.remove('saved'); }
+  }
+
   function collectJobsForm() {
     var list = [], bad = '', incomplete = 0;
     document.querySelectorAll('#jobEdit .rwItem').forEach(function (el) {
@@ -2644,7 +2748,8 @@
       if (!title) { if (id || (costEl.value || '').trim()) incomplete++; return; }
       if (/[\u00a3$\u20ac]|\b\d+\s*p\b|\bpounds?\b|\bquid\b|\bmoney\b|\bcash\b|\bdollars?\b|\beuros?\b|\bpence\b/i.test(title)) bad = 'Keep money out of job names.';
       if (!(cost >= 5 && cost <= 100000)) bad = bad || 'Job points should be a whole number from 5 up.';
-      list.push({ id: id, title: title, cost: cost, active: on ? on.checked : true });
+      var icon = ((el.querySelector('.jobIcon') || {}).value || '').trim();
+      list.push({ id: id, title: title, cost: cost, active: on ? on.checked : true, icon: icon, emoji: icon });
     });
     return { list: list, bad: bad, incomplete: incomplete };
   }
@@ -2741,14 +2846,9 @@
       if (/[\u00a3$\u20ac]|\b\d+\s*p\b|\bpounds?\b|\bquid\b|\bmoney\b|\bcash\b|\bdollars?\b|\beuros?\b|\bpence\b/i.test(title)) bad = 'Keep money out of reward names.';
       list.push({ id: id, title: title, cost: cost, active: on ? on.checked : true });
     });
-    var pts = {
-      photo: parseInt(($('rwPtsPhoto') && $('rwPtsPhoto').value) || '10', 10),
-      found: parseInt(($('rwPtsTick') && $('rwPtsTick').value) || '5', 10),
-      update: parseInt(($('rwPtsUpdate') && $('rwPtsUpdate').value) || '5', 10),
-      add: parseInt(($('rwPtsAdd') && $('rwPtsAdd').value) || '20', 10),
-      streak: parseInt(($('rwPtsStreak') && $('rwPtsStreak').value) || '15', 10)
-    };
-    return { list: list, pts: pts, bad: bad };
+    var rules = collectPointRulesForm();
+    if (rules.bad && !bad) bad = rules.bad;
+    return { list: list, pts: rules.payload, rules: rules, bad: bad };
   }
   function markRewardsSaved() {
     var btn = $('rwSaveBtn');
@@ -2779,13 +2879,20 @@
     var jobs = collectJobsForm();
     if (jobs.bad) { toast(jobs.bad, 'oops'); return; }
     if (jobs.incomplete) { toast('Give each new job a name before saving, or the jobs won\u2019t go through to Son.', 'oops'); return; }
+    var rules = form.rules || collectPointRulesForm();
+    if (rules.bad) { toast(rules.bad, 'oops'); return; }
+    if (rules.incomplete) { toast('Give each collection job a name before saving, or it won\u2019t go through to Son.', 'oops'); return; }
+    var ptsPayload = form.pts || rules.payload;
     withDadPinThen(function () {
       busy('Saving\u2026');
       var p1 = call('saveRewards', form.list, S.role);
-      var p2 = call('savePointRules', form.pts, S.role).catch(function (e) {
+      var p2 = call('savePointRules', ptsPayload, S.role).then(function (r) {
+        if (r && r.queued) throw new Error('The points rules couldn\u2019t reach the sheet just now. Check you\u2019ve got signal and tap Save again \u2014 they haven\u2019t been saved.');
+        return r;
+      }, function (e) {
         var msg = String((e && e.message) || e || '');
         if (/unknown action/i.test(msg)) return { skipped: true };
-        throw e;
+        throw new Error((msg && !/TypeError|ReferenceError|didn\u2019t work/i.test(msg)) ? ('Points rules didn\u2019t save: ' + msg) : 'Points rules didn\u2019t save. Check you\u2019ve got signal and try again.');
       });
       var wantJobs = !!(!($('jobEdit') === null) || (jobs.list && jobs.list.length));
       var p3 = wantJobs ? call('saveJobs', jobs.list, S.role).then(function (r) {
@@ -2823,6 +2930,22 @@
           });
           sortJobEditor();
         }
+        var savedCustom = (res[1] && (res[1].collectionJobs || res[1].allCollectionJobs)) || [];
+        if (savedCustom.length && $('ptsEdit')) {
+          var usedC = {};
+          Array.prototype.forEach.call($('ptsEdit').querySelectorAll('.rwItem[data-auto="0"]'), function (el) {
+            var title = ((el.querySelector('.ptsTitle') || {}).value || '').replace(/\s+/g, ' ').trim();
+            var cost = parseInt((el.querySelector('.ptsCost') || {}).value, 10);
+            var id = el.getAttribute('data-id') || '';
+            var match = null;
+            if (id) for (var i = 0; i < savedCustom.length; i++) if (savedCustom[i].id === id) { match = savedCustom[i]; break; }
+            if (!match) for (var j = 0; j < savedCustom.length; j++) if (!usedC[savedCustom[j].id] && savedCustom[j].title === title && savedCustom[j].cost === cost) { match = savedCustom[j]; break; }
+            if (!match) return;
+            usedC[match.id] = 1;
+            el.setAttribute('data-id', match.id);
+          });
+          sortPointRulesEditor();
+        }
         if (res[2] && res[2].skipped) {
           toast('Rewards saved, but the jobs didn\u2019t. They need the latest sheet update before they will show for Son.', 'oops');
           return;
@@ -2831,8 +2954,17 @@
           toast('Rewards saved, but the jobs may not have gone through. Tap Save again.', 'oops');
           return;
         }
+        if (res[1] && res[1].skipped) {
+          toast('Rewards saved, but the points rules didn\u2019t. They need the latest sheet update before they will stick.', 'oops');
+          return;
+        }
+        var wantCustom = !!(rules.customJobs && rules.customJobs.length);
+        var wantLabels = !!(rules.rules && rules.rules.length);
+        if ((wantCustom || wantLabels) && !(res[1] && (res[1].pointRules || res[1].collectionJobs))) {
+          toast('Point numbers saved, but names, on/off and extra collection jobs need the latest sheet update (v4.9) before they will stick.', 'oops');
+          return;
+        }
         markRewardsSaved();
-        if (res[1] && res[1].skipped) toast('Rewards saved. Points rules need the server update before they will stick.', 'good');
         loadRewards(true).then(function (r) {
           if (S.screen === 'rewards') go('rewards', {}, true);
           else if (S.screen === 'home' || S.screen === 'kid') paintWaysToEarn(r);
@@ -2840,6 +2972,7 @@
       }).catch(oops);
     }).catch(oops);
   }
+
   function keepAddName() {
     var A = addState();
     if (A.step === 2 && $('addName')) A.name = ($('addName').value || '').trim();
@@ -4849,36 +4982,98 @@ SCREENS.who = function () {
   }
   function ptsLabel(n) { return n === 1 ? '1 pt' : n + ' pts'; }
   function earnJobs(r) {
-    return [
-      { kind: 'photo', icon: '\uD83D\uDCF8', title: 'Add a photo', pts: ptsVal(r, 'photo', 10), desc: 'Snap one of our things. You get the points when Dad says yes.' },
-      { kind: 'add', icon: '\uD83D\uDCE6', title: 'Add a new find', pts: ptsVal(r, 'add', 20), desc: 'Save something new to our collection.' },
-      { kind: 'found', icon: '\u2B50', title: 'Tick one off the Hunt', pts: ptsVal(r, 'found', 5), desc: 'Found it on Hunt or Wanted? Mark it ours.' },
-      { kind: 'update', icon: '\u270F\uFE0F', title: 'Update a thing', pts: ptsVal(r, 'update', 5), desc: 'Help fill in details on something we already have.' },
-      { kind: 'streak', icon: '\uD83D\uDD25', title: '3-day helper bonus', pts: ptsVal(r, 'streak', 15), desc: 'Help on 3 days in a row and get a bonus on top.' }
-    ];
+    return builtInPointRules(r).filter(function (x) { return x.active !== false; }).map(function (x) {
+      return { kind: x.key, auto: true, icon: x.emoji || jobEmoji(x.title), title: x.title, pts: x.pts, cost: x.pts, desc: x.desc };
+    });
   }
-  function collectionJobsHtml(r) {
+  function collectionJobsHtml(r, kid) {
+    if (kid == null) kid = !!S.kid;
+    var items = earnJobs(r).concat(customCollectionJobs(r, false).map(function (j) {
+      return { auto: false, id: j.id, icon: jobIcon(j), title: jobTitleDisplay(j), rawTitle: j.title, pts: j.pts, cost: j.pts, desc: j.desc || '', pending: j.pending, pendingId: j.pendingId, doneToday: j.doneToday, emoji: j.emoji };
+    }));
+    items = sortJobsList(items);
+    if (!items.length) return '<p class="hint">No collection jobs on the list just now.</p>';
     var h = '<div class="earnJobs">';
-    earnJobs(r).forEach(function (j) {
-      h += '<button type="button" class="earnJob" data-act="earnGo" data-kind="' + esc(j.kind) + '">' +
-        '<span class="eIc">' + j.icon + '</span>' +
-        '<span class="eTxt"><b>' + esc(j.title) + '</b><small>' + esc(j.desc) + '</small></span>' +
-        '<span class="ePts">' + ptsLabel(j.pts) + '</span></button>';
+    items.forEach(function (j) {
+      if (j.auto) {
+        h += '<button type="button" class="earnJob" data-act="earnGo" data-kind="' + esc(j.kind) + '">' +
+          '<span class="eIc">' + (j.icon || jobEmoji(j.title)) + '</span>' +
+          '<span class="eTxt"><b>' + esc(j.title) + '</b><small>' + esc(j.desc) + '</small></span>' +
+          '<span class="ePts">' + ptsLabel(j.pts) + '</span></button>';
+        return;
+      }
+      var pending = !!(j.pending || j.pendingId);
+      var sub = j.doneToday ? (kid ? 'Done today \u2014 well done!' : 'Done today') :
+        (pending ? 'Waiting for Dad' : (j.desc || (kid ? 'Tap when you\u2019ve done it' : 'Son taps, you approve with your PIN')));
+      var tappable = !!(kid && !j.doneToday && !pending);
+      var tag = tappable ? 'button' : 'div';
+      var cls = 'earnJob jobRow' + (pending ? ' waiting' : '') + (j.doneToday ? ' done' : '');
+      var act = tappable ? ' data-act="jobAsk" data-id="' + esc(j.id) + '"' : (' data-id="' + esc(j.pendingId || j.id || '') + '" data-title="' + esc(j.rawTitle || j.title) + '" data-cost="' + esc(j.cost) + '"');
+      h += '<' + tag + (tag === 'button' ? ' type="button"' : '') + ' class="' + cls + '"' + act + '>' +
+        '<span class="eIc">' + (j.icon || jobIcon(j)) + '</span>' +
+        '<span class="eTxt"><b>' + esc(j.title) + '</b><small>' + esc(sub) + '</small></span>' +
+        '<span class="ePts">+' + j.cost + '</span>';
+      if (!kid && pending && isPriv()) {
+        h += '<span class="jobActs"><button type="button" class="btn green small" data-act="jobYes" data-id="' + esc(j.pendingId || j.id) + '">Approve</button>' +
+          '<button type="button" class="btn small" data-act="jobNo" data-id="' + esc(j.pendingId || j.id) + '">No</button></span>';
+      }
+      h += '</' + tag + '>';
     });
     return h + '</div>';
   }
   function earnCardHtml(r, kid) { return waysToEarnHtml(r, kid); }
   function paintEarnPoints(r) { paintWaysToEarn(r); }
+  function emojiMatches(s) {
+    var t = String(s || '');
+    try { return t.match(/\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic})*/gu) || []; }
+    catch (e) { return t.match(/[\uD800-\uDBFF][\uDC00-\uDFFF](?:\uFE0F\u20E3?|\uFE0F|\u20E3)?/g) || []; }
+  }
+  function stripEmojis(s) {
+    var out = String(s || ''), list = emojiMatches(out), i;
+    for (i = 0; i < list.length; i++) out = out.split(list[i]).join(' ');
+    return out.replace(/\s+/g, ' ').trim();
+  }
+  function trailingEmojiCluster(s) {
+    var t = String(s || '').trim(), list = emojiMatches(t), trail = '', i;
+    if (!list.length) return '';
+    for (i = list.length - 1; i >= 0; i--) {
+      if (t.length >= list[i].length && t.slice(t.length - list[i].length) === list[i]) {
+        trail = list[i] + trail;
+        t = t.slice(0, t.length - list[i].length).trim();
+      } else break;
+    }
+    return trail || list[0];
+  }
   function jobEmoji(t) {
-    var s = String(t || '').toLowerCase();
-    if (/dish/.test(s)) return '\uD83C\uDF74';
-    if (/room|bed/.test(s)) return '\uD83D\uDECF\uFE0F';
-    if (/rubbish|trash|bin/.test(s)) return '\uD83D\uDDD1\uFE0F';
-    if (/garden|lawn|grass/.test(s)) return '\uD83C\uDF3F';
-    return '\uD83E\uDDF9';
+    var s = stripEmojis(t).toLowerCase();
+    if (/clothes|put away|laundry|washing|\bsocks\b|\bshirt/.test(s)) return '\uD83D\uDC55';
+    if (/plank|sit\s*-?\s*ups?|push\s*-?\s*ups?|press\s*-?\s*ups?|exercise|workout/.test(s)) return '\uD83D\uDCAA';
+    if (/dishwasher|dishes|\bdish\b/.test(s)) return '\uD83C\uDF7D\uFE0F';
+    if (/room|\bbed\b|bedroom/.test(s)) return '\uD83D\uDECF\uFE0F';
+    if (/homework|\bread\b|\bbook|\bschool/.test(s)) return '\uD83D\uDCDA';
+    if (/\bdog\b|\bwalk/.test(s)) return '\uD83D\uDC15';
+    if (/\bcat\b|\bfeed(?:s|ing)?\b/.test(s)) return '\uD83D\uDC31';
+    if (/rubbish|trash|\bbin\b/.test(s)) return '\uD83D\uDDD1\uFE0F';
+    if (/teeth|toothbrush|brush your teeth/.test(s)) return '\uD83E\uDEA5';
+    if (/\btidy\b|hoover|vacuum|\bsweep/.test(s)) return '\uD83E\uDDF9';
+    if (/\bcar\b|\bdrive\b/.test(s)) return '\uD83D\uDE97';
+    if (/garden|lawn|grass|\bplant/.test(s)) return '\uD83C\uDF31';
+    return '\u2B50';
+  }
+  function jobIcon(j) {
+    var saved = String((j && (j.icon || j.emoji)) || '').trim();
+    if (saved) return saved;
+    var fromName = trailingEmojiCluster(j && j.title);
+    if (fromName) return fromName;
+    return jobEmoji(j && j.title);
+  }
+  function jobTitleDisplay(j) {
+    var title = String((j && j.title) || '');
+    var cleaned = stripEmojis(title);
+    return cleaned || title;
   }
   function jobsForHome(r) {
-    return rwArr(r && r.jobs);
+    return rwArr(r && r.jobs).filter(function (j) { return !j || j.kind !== 'collection'; });
   }
   function homeJobRowsHtml(r, kid) {
     var jobs = sortJobsList(jobsForHome(r || {}));
@@ -4893,8 +5088,8 @@ SCREENS.who = function () {
       var tag = tappable ? 'button' : 'div';
       var act = tappable ? ' data-act="jobAsk" data-id="' + esc(j.id) + '"' : (' data-id="' + esc(j.pendingId || j.id || '') + '" data-title="' + esc(j.title || '') + '" data-cost="' + esc(j.cost || '') + '"');
       h += '<' + tag + (tag === 'button' ? ' type="button"' : '') + ' class="' + cls + '"' + act + '>' +
-        '<span class="eIc">' + jobEmoji(j.title) + '</span>' +
-        '<span class="eTxt"><b>' + esc(j.title) + '</b><small>' + sub + '</small></span>' +
+        '<span class="eIc">' + jobIcon(j) + '</span>' +
+        '<span class="eTxt"><b>' + esc(jobTitleDisplay(j)) + '</b><small>' + sub + '</small></span>' +
         '<span class="ePts">+' + j.cost + '</span>';
       if (!kid && pending && isPriv()) {
         h += '<span class="jobActs"><button type="button" class="btn green small" data-act="jobYes" data-id="' + esc(j.pendingId || j.id) + '">Approve</button>' +
@@ -4913,9 +5108,9 @@ SCREENS.who = function () {
     h += homeJobRowsHtml(r, kid);
     if (!kid && isPriv()) h += '<button type="button" class="btn small waysOpen" data-act="go" data-to="rewards">Open jobs</button>';
     h += '<h3>\uD83D\uDCF8 Collection jobs</h3>';
-    if (kid) h += '<p class="waysSub">Tap one to go and do it. Photos still wait for Dad to say yes.</p>';
-    else h += '<p class="waysSub">These land automatically when Son does them. Tap to open that part of the app.</p>';
-    h += collectionJobsHtml(r);
+    if (kid) h += '<p class="waysSub">Automatic ones happen as you go. Your own ones: tap when it\u2019s done, and Dad approves.</p>';
+    else h += '<p class="waysSub">Automatic ones happen when he does them. Your own ones work like jobs at home \u2014 he taps, you approve.</p>';
+    h += collectionJobsHtml(r, kid);
     return h + '</div>';
   }
   function jobsCardHtml(r, kid) { return waysToEarnHtml(r, kid); }
@@ -5216,8 +5411,9 @@ SCREENS.who = function () {
   /* ---------------- events ---------------- */
   document.addEventListener('change', function (e) {
     var el = e.target;
-    if (!el || !el.closest || !el.closest('#jobEdit')) return;
-    if (el.classList && (el.classList.contains('jobCost') || el.classList.contains('jobTitle'))) sortJobEditor();
+    if (!el || !el.closest) return;
+    if (el.closest('#jobEdit') && el.classList && (el.classList.contains('jobCost') || el.classList.contains('jobTitle') || el.classList.contains('jobIcon'))) sortJobEditor();
+    if (el.closest('#ptsEdit') && el.classList && (el.classList.contains('ptsCost') || el.classList.contains('ptsTitle') || el.classList.contains('ptsEmoji'))) sortPointRulesEditor();
   });
   document.addEventListener('click', function (e) {
     var tab = e.target.closest('[data-tab]');
@@ -5347,6 +5543,7 @@ SCREENS.who = function () {
       case 'rwSave': saveRewardsUI(); break;
       case 'rwAdd': addRewardRow(); break;
       case 'jobAdd': addJobRow(); break;
+      case 'ptsAdd': addPointRuleRow(); break;
       case 'jobAsk': requestJobUI(el.getAttribute('data-id')); break;
       case 'jobYes': decideJobUI(el.getAttribute('data-id'), true); break;
       case 'jobNo': decideJobUI(el.getAttribute('data-id'), false); break;
