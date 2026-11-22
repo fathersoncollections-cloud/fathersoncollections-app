@@ -1368,8 +1368,8 @@
     var idn = function (it) { var m = String(it.id || '').match(/(\d+)\s*$/); return m ? +m[1] : 0; };
     return (S.items || []).filter(function (it) { return isOwned(it) && kidVisible(it); }).sort(function (a, b) { return idn(b) - idn(a); });   // newest finds first
   }
-  function kidTile(it) {
-    return '<button class="ktile" data-act="kidItem" data-key="' + esc(it.key) + '">' + thumbHtml(it) + '<span class="kname">' + esc(it.name) + '</span></button>';
+  function kidTile(it, act) {
+    return '<button class="ktile" data-act="' + (act || 'kidItem') + '" data-key="' + esc(it.key) + '">' + thumbHtml(it) + '<span class="kname">' + esc(it.name) + '</span></button>';
   }
   SCREENS.kid = function () {
     loadBoot().then(function () {
@@ -1416,10 +1416,24 @@
       var h = '<h1>\uD83E\uDDF8 Our stuff</h1><div class="search"><input id="kidQ" type="search" class="ownInput" placeholder="\uD83D\uDD0D Find something\u2026" value="' + esc(q) + '" autocomplete="off"></div><div id="kidGrid"></div>';
       setMain(h);
       var draw = function () {
-        var list = q ? fuzzyFind(q, all, 60).map(function (x) { return x.it; }) : all;
-        var shown = q ? list : list.slice(0, S.kidShown || 40);
-        $('kidGrid').innerHTML = '<p class="hint">' + list.length + ' thing' + (list.length === 1 ? '' : 's') + (q ? ' found' : ' - tap one to see it or add a photo') + '</p><div class="kstuff">' + shown.map(kidTile).join('') + '</div>' +
-          (!q && list.length > shown.length ? '<p class="center"><button class="btn" data-act="kidMore">Show more</button></p>' : '');
+        var html = '';
+        if (q) {
+          var list = fuzzyFind(q, all, 60).map(function (x) { return x.it; });
+          html = '<p class="hint">' + list.length + ' thing' + (list.length === 1 ? '' : 's') + ' found</p><div class="kstuff">' + list.map(kidTile).join('') + '</div>';
+        } else {
+          var film = stillToFilmItems();
+          var got = all.filter(function (it) { return it.folderId; });
+          var shown = got.slice(0, S.kidShown || 40);
+          html = '<p class="hint">' + all.length + ' thing' + (all.length === 1 ? '' : 's') + ' - tap one to see it or add a photo</p>';
+          if (film.length) {
+            html += '<div class="kstuffFilm"><h2>D\u2019oh! Still to film</h2><p class="hint">' + film.length + ' to film — tap one when you\u2019ve taken photos</p>' +
+              '<div class="kstuff">' + film.map(function (it) { return kidTile(it, 'filmAsk'); }).join('') + '</div></div>';
+          }
+          html += (film.length ? '<h2 class="kstuffGot">Got a photo</h2>' : '') +
+            '<div class="kstuff">' + shown.map(kidTile).join('') + '</div>' +
+            (got.length > shown.length ? '<p class="center"><button class="btn" data-act="kidMore">Show more</button></p>' : '');
+        }
+        $('kidGrid').innerHTML = html;
         watchThumbs();
       };
       var t = null;
@@ -5142,20 +5156,20 @@ SCREENS.who = function () {
   function jobsCardHtml(r, kid) { return waysToEarnHtml(r, kid); }
   function stillToFilmItems() {
     var idn = function (it) { var m = String(it.id || '').match(/(\d+)\s*$/); return m ? +m[1] : 0; };
-    if (S.kid) return [];
     return (S.items || []).filter(function (it) {
-      if (it.folderId || !isOwned(it) || neverShow(it.name) || sonHidden(it.name)) return false;
-      return true;
+      if (it.folderId || !isOwned(it) || neverShow(it.name)) return false;
+      if (S.kid) return kidVisible(it);
+      return !sonHidden(it.name);
     }).sort(function (a, b) { return idn(b) - idn(a) || (b.row || 0) - (a.row || 0); });
   }
   function stillToFilmCardHtml() {
     var list = stillToFilmItems();
     if (!list.length) return '';
-    var kid = !!S.kid, act = kid ? 'kidItem' : 'item', cap = 8, shown = list.slice(0, cap);
+    var kid = !!S.kid, act = kid ? 'filmAsk' : 'item', cap = 8, shown = list.slice(0, cap);
     var h = '<div class="filmCard">' +
       '<h2>D\u2019oh! Still to film</h2>' +
       '<p class="waysSub">' + (kid
-        ? 'These don\u2019t have a photo yet. Tap one and you can add one.'
+        ? 'Things you can film. Tap one when you\u2019ve taken photos, then Dad takes a look and you get the points when he says yes.'
         : 'Owned items with no photo folder yet. Tap one to open it and add a photo.') + '</p>' +
       '<div class="filmRows">';
     shown.forEach(function (it) {
@@ -5174,9 +5188,21 @@ SCREENS.who = function () {
   function paintStillToFilm() {
     var el = $('kidFilm') || $('homeFilm');
     if (!el) return;
-    if (S.kid) { el.innerHTML = ''; return; }
     el.innerHTML = stillToFilmCardHtml();
     if (el.innerHTML) watchThumbs();
+  }
+  function filmAskUI(key) {
+    var it = itemByKey(key);
+    if (!it || (S.kid && !kidVisible(it))) return;
+    var pts = 0;
+    try { pts = (RW && RW.points && RW.points.photo) || (S.rewards && S.rewards.points && S.rewards.points.photo) || 0; } catch (eP) { pts = 0; }
+    var ptsBit = pts > 0 ? ' You get ' + pts + ' points when he says yes.' : ' You get the points when he says yes.';
+    confirmSheet('I filmed it?', 'Tell Dad you\u2019ve filmed or taken photos of <b>' + esc(it.name) + '</b>?' + ptsBit + ' Add the photos next.',
+      'I filmed it / took photos', 'Not yet').then(function (ok) {
+        if (!ok) return;
+        S.current = it;
+        openCamera({ key: it.key, name: it.name });
+      }).catch(oops);
   }
   function paintWaysToEarn(r) {
     var el = $('kidWays') || $('homeWays');
@@ -5622,6 +5648,7 @@ SCREENS.who = function () {
       case 'kidEnter': enterKid(); break;
       case 'kidExit': exitKid(); break;
       case 'kidItem': $('sheet').hidden = true; go('kidItem', { key: key }); break;
+      case 'filmAsk': filmAskUI(key); break;
       case 'filmSeeAll':
         S.filters = S.filters || {};
         S.filters.photos = 'no';
