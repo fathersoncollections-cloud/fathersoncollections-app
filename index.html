@@ -1014,18 +1014,155 @@
   #sheetBody .addBcRef { display: block; width: 140px; height: 140px; object-fit: contain; background: #fff; border: 3px dashed var(--ink); border-radius: 12px; margin: 8px 0 4px; }
 
 
-  .rwHomeCard { margin: 12px 0; text-align: left; }
-  .rwHomeCard h2 { font-size: 22px; margin: 0 0 2px; }
-  .rwHomeCard .funSub { margin-bottom: 10px; }
-  .rwNext { display: flex; align-items: flex-start; gap: 8px; background: var(--white); border: 3px solid var(--ink); border-radius: 14px; padding: 10px 12px; margin: 0 0 10px; }
-  .rwNext > b { flex: 0 0 auto; font-size: 13px; text-transform: uppercase; letter-spacing: .02em; padding-top: 2px; }
-  .rwNext .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-  .rwNext .grow b { font-size: 16px; }
-  .rwNext small { font-size: 13px; font-weight: 700; opacity: .85; }
-  .rwHomeList { margin: 0 0 10px; }
-  .rwHomeItem { padding: 8px 0; }
-  .rwHomeItem .row { align-items: baseline; gap: 8px; }
-  .rwHomeItem b { font-size: 15px; }
+  #homeJobs { margin-top: 10px; }
+  #homeJobs:empty { display: none; }
+  .jobCard.jobSoon { background: linear-gradient(180deg, #E8F9E8, #C8F7C8); }
+  .jobCard.jobSoon .jobSub { padding-right: 4px; }
+
+  .rwHomeCard {
+    margin: 12px 0;
+    text-align: left;
+    padding: 14px 14px 16px;
+    overflow: hidden;
+  }
+  .rwHomeCard h2 { font-size: 24px; margin: 0 0 2px; }
+  .rwHomeCard .funSub { margin: 0 0 12px; padding-right: 4px; }
+  .rwHero {
+    background: #fff;
+    border: 3px solid var(--ink);
+    border-radius: 18px;
+    padding: 14px 14px 16px;
+    margin: 0 0 14px;
+    text-align: center;
+    box-shadow: 0 5px 0 #C9A000;
+  }
+  .rwHero.ready { box-shadow: 0 5px 0 #2E7D32, 0 0 0 3px #7EDC7E; }
+  .rwHeroEyebrow {
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    font-size: 12px;
+    margin-bottom: 4px;
+  }
+  .rwHeroEmoji { font-size: 52px; line-height: 1; margin: 4px 0 8px; }
+  .rwHeroTitle {
+    font-size: 20px;
+    font-weight: 900;
+    margin: 0 0 12px;
+    line-height: 1.25;
+    padding: 0 8px;
+  }
+  .rwHeroBar {
+    height: 22px;
+    background: #FFEFC2;
+    border: 3px solid var(--ink);
+    border-radius: 999px;
+    overflow: hidden;
+    margin: 0 6px 12px;
+    position: relative;
+  }
+  .rwHeroBar > i {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: linear-gradient(90deg, #FF6B35, #FFD000);
+    transition: width .8s ease;
+    position: relative;
+  }
+  .rwHeroBar > i::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,.5), transparent);
+    animation: rwShine 1.4s ease-in-out infinite;
+  }
+  .rwHeroMeta {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 0 6px;
+  }
+  .rwHeroBadge {
+    background: #13294B;
+    color: #FFE566;
+    font-weight: 900;
+    font-size: 14px;
+    border-radius: 999px;
+    padding: 6px 12px;
+    border: 2px solid var(--ink);
+  }
+  .rwHeroBadge.ready { background: #2E7D32; color: #fff; }
+  .rwPrizeGrid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin: 0 0 12px;
+  }
+  .rwPrize {
+    background: #fff;
+    border: 3px solid var(--ink);
+    border-radius: 16px;
+    padding: 12px 10px 12px;
+    text-align: center;
+    min-width: 0;
+    position: relative;
+  }
+  .rwPrize.locked { background: #E8E8E8; filter: grayscale(.65); opacity: .9; }
+  .rwPrize.ready {
+    background: #FFFBEA;
+    box-shadow: 0 0 0 2px #FFE566, 0 4px 0 #C9A000;
+    animation: rwGlow 1.6s ease-in-out infinite;
+  }
+  .rwPrize.more { display: none; }
+  .rwShowAll .rwPrize.more { display: block; }
+  .rwPrizeEm { font-size: 32px; line-height: 1; margin-bottom: 6px; }
+  .rwPrizeLock { position: absolute; top: 6px; right: 6px; font-size: 14px; line-height: 1; }
+  .rwPrize b {
+    display: block;
+    font-size: 13px;
+    font-weight: 900;
+    line-height: 1.25;
+    margin: 0 0 8px;
+    padding: 0 4px;
+  }
+  .rwMiniBar {
+    height: 8px;
+    background: #FFEFC2;
+    border: 2px solid var(--ink);
+    border-radius: 999px;
+    overflow: hidden;
+    margin: 0 4px 8px;
+  }
+  .rwMiniBar > i {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: #FF6B35;
+    transition: width .7s ease;
+  }
+  .rwPrizeMeta {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    padding: 0 4px;
+  }
+  .rwSeeAll { width: 100%; margin: 0 0 12px; }
+  @keyframes rwShine {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+  @keyframes rwGlow {
+    0%, 100% { box-shadow: 0 0 0 2px #FFE566, 0 4px 0 #C9A000; }
+    50% { box-shadow: 0 0 0 4px #FFD000, 0 4px 0 #C9A000; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .rwHeroBar > i, .rwMiniBar > i { transition: none; }
+    .rwHeroBar > i::after, .rwPrize.ready { animation: none; }
+  }
 
 </style>
 
@@ -1114,7 +1251,7 @@
   (function () {
     'use strict';
     var API = "https://script.google.com/macros/s/AKfycbwSO6lF3RuWl0oihI0plwrpb2UKTVDG699nbfXpsiD9y-ZIlRxf44L4SZgw7whRzpeF/exec";
-    var VER = "v7s-20261122";
+    var VER = "v7t-20261122";
     // Plain fetch with no cookies, so Google's multi-account sign-in never gets involved.
     function post(fn, args) {
       return fetch(API, {
