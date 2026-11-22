@@ -5185,25 +5185,25 @@ SCREENS.who = function () {
     }).sort(function (a, b) { return idn(b) - idn(a) || (b.row || 0) - (a.row || 0); });
   }
   function stillToFilmCardHtml() {
-    var list = stillToFilmItems();
+    var kid = !!S.kid;
+    var list = kid ? stillToFilmItems() : ((S.photoTodo && S.photoTodo.list) ? S.photoTodo.list.slice() : []);
     if (!list.length) return '';
-    var kid = !!S.kid, act = kid ? 'filmAsk' : 'item', cap = 8, shown = list.slice(0, cap);
+    var act = kid ? 'filmAsk' : 'item', cap = 8, shown = list.slice(0, cap);
     var h = '<div class="filmCard">' +
-      '<h2>D\u2019oh! Still to film</h2>' +
+      '<h2>' + (kid ? 'D\u2019oh! Still to film' : '\uD83D\uDCF8 Photos to take') + '</h2>' +
       '<p class="waysSub">' + (kid
         ? 'The same photos Dad still needs. Tap one to take a photo, then he takes a look and you get the points when he says yes.'
-        : 'Owned items with no photo folder yet. Tap one to open it and add a photo.') + '</p>' +
+        : 'Items still needing our own photos. Tap one to open it, or see the full list to take a photo straight into its folder.') + '</p>' +
       '<div class="filmRows">';
     shown.forEach(function (it) {
       h += '<button type="button" class="filmRow" data-act="' + act + '" data-key="' + esc(it.key) + '">' +
         thumbHtml(it) +
-        '<span class="filmTxt"><b>' + esc(it.name) + '</b><small>' + esc(it.range || 'No photo yet') + '</small></span>' +
+        '<span class="filmTxt"><b>' + esc(it.name) + '</b><small>' + esc(it.range || '') + '</small></span>' +
         '</button>';
     });
     h += '</div>';
     if (list.length > cap) {
-      if (kid) h += '<button type="button" class="btn small waysOpen" data-act="go" data-to="photos">See all ' + list.length + '</button>';
-      else h += '<button type="button" class="btn small waysOpen" data-act="filmSeeAll">See all ' + list.length + '</button>';
+      h += '<button type="button" class="btn small waysOpen" data-act="go" data-to="photos">See all ' + list.length + '</button>';
     }
     return h + '</div>';
   }
@@ -5215,8 +5215,7 @@ SCREENS.who = function () {
       el.innerHTML = stillToFilmCardHtml();
       if (el.innerHTML) watchThumbs();
     };
-    if (S.kid) loadPhotoTodo().then(paint, paint);
-    else paint();
+    loadPhotoTodo().then(paint, paint);
   }
   function filmAskUI(key) {
     var it = itemByKey(key);
