@@ -1007,6 +1007,26 @@
     .wheel { transition: none !important; }
   }
 
+
+  .scanQItem .addBcCode { margin-bottom: 6px; }
+  #sheetBody .addBcCode { font-size: 22px; font-weight: 900; letter-spacing: 1px; margin: 0 0 8px; word-break: break-all; }
+  #sheetBody .addBcFound { margin: 8px 0; }
+  #sheetBody .addBcRef { display: block; width: 140px; height: 140px; object-fit: contain; background: #fff; border: 3px dashed var(--ink); border-radius: 12px; margin: 8px 0 4px; }
+
+
+  .rwHomeCard { margin: 12px 0; text-align: left; }
+  .rwHomeCard h2 { font-size: 22px; margin: 0 0 2px; }
+  .rwHomeCard .funSub { margin-bottom: 10px; }
+  .rwNext { display: flex; align-items: flex-start; gap: 8px; background: var(--white); border: 3px solid var(--ink); border-radius: 14px; padding: 10px 12px; margin: 0 0 10px; }
+  .rwNext > b { flex: 0 0 auto; font-size: 13px; text-transform: uppercase; letter-spacing: .02em; padding-top: 2px; }
+  .rwNext .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .rwNext .grow b { font-size: 16px; }
+  .rwNext small { font-size: 13px; font-weight: 700; opacity: .85; }
+  .rwHomeList { margin: 0 0 10px; }
+  .rwHomeItem { padding: 8px 0; }
+  .rwHomeItem .row { align-items: baseline; gap: 8px; }
+  .rwHomeItem b { font-size: 15px; }
+
 </style>
 
   <style>
@@ -1094,7 +1114,7 @@
   (function () {
     'use strict';
     var API = "https://script.google.com/macros/s/AKfycbwSO6lF3RuWl0oihI0plwrpb2UKTVDG699nbfXpsiD9y-ZIlRxf44L4SZgw7whRzpeF/exec";
-    var VER = "v7q-20261122";
+    var VER = "v7s-20261122";
     // Plain fetch with no cookies, so Google's multi-account sign-in never gets involved.
     function post(fn, args) {
       return fetch(API, {

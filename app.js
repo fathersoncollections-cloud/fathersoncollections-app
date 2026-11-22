@@ -126,8 +126,8 @@
     return !!(e && (e.network || (e.name === 'TypeError' && /fetch|network|load failed/i.test(e.message || ''))));
   }
   function offlineErr() { return new Error('\uD83D\uDCF4 No signal right now, and this bit wasn\u2019t saved on the phone yet. It\u2019ll work again as soon as you\u2019re back online.'); }
-  var READ_FNS = { getBootstrap: 1, getWanted: 1, getChecklists: 1, getChecklist: 1, getItem: 1, getStats: 1, getAllMissing: 1, getPostedBoard: 1, getDuplicates: 1, getPhotoTodo: 1, getNoValue: 1, getValueSummary: 1, getItemPhotos: 1, getHistory: 1, getRewards: 1, getQueuePhoto: 1 };
-  var WRITE_FNS = { saveItem: 1, addItem: 1, markGotIt: 1, setPosted: 1, uploadMedia: 1, saveBarcode: 1, setMainPhoto: 1, requestReward: 1, decideReward: 1, saveRewards: 1, savePointRules: 1, saveJobs: 1, completeJob: 1, decidePhoto: 1 };
+  var READ_FNS = { getBootstrap: 1, getWanted: 1, getChecklists: 1, getChecklist: 1, getItem: 1, getStats: 1, getAllMissing: 1, getPostedBoard: 1, getDuplicates: 1, getPhotoTodo: 1, getNoValue: 1, getValueSummary: 1, getItemPhotos: 1, getHistory: 1, getRewards: 1, getQueuePhoto: 1, getScanQueue: 1 };
+  var WRITE_FNS = { saveItem: 1, addItem: 1, markGotIt: 1, setPosted: 1, uploadMedia: 1, saveBarcode: 1, setMainPhoto: 1, requestReward: 1, decideReward: 1, saveRewards: 1, savePointRules: 1, saveJobs: 1, completeJob: 1, decidePhoto: 1, queueScan: 1, dismissScan: 1, markScanAdded: 1 };
   function tokenNow() { return S.kid ? '' : (LS.get('dadToken') || ''); }   // Son's mode never sends the PIN token
   function cacheKey(fn, args) { return 'c|' + fn + '|' + JSON.stringify(args) + '|' + (tokenNow() && dadUnlocked() ? 'p' : 'n'); }
   function hasPending(args) { return args.some(function (a) { return typeof a === 'string' && a.indexOf('pending:') === 0; }); }
@@ -504,12 +504,7 @@
   function handleCode(code) {
     var opts = SCAN.opts || {}, digits = bcDigits(code);
     if (!digits) { layerDrop(); toast('That code isn\u2019t a product barcode (' + String(code).slice(0, 30) + ').', 'oops'); return; }
-    if (opts.assign) {
-      var a = opts.assign;
-      return confirmSheet('Save this barcode?', 'Save <b>' + esc(digits) + '</b> onto <b>' + esc(a.name) + '</b>? Next time you scan this box it\u2019ll match straight away.', 'Yes, save it', 'Cancel').then(function (ok) {
-        if (ok) saveBarcodeTo(a.key, a.name, digits).then(function () { if (S.screen === 'item') go('item', S.params, true); });
-      });
-    }
+    if (opts.assign) { showAssignBarcode(digits, opts.assign); return; }
     if (opts.add) { layerDrop(); applyAddBarcode(digits); return; }
     var hits = itemsByBarcode(digits);
     var listHtml = function (list) {
@@ -525,26 +520,163 @@
       return;
     }
     S.lastCode = digits;
-    if (S.kid) {
-      sheet('\uD83E\uDD37 Not in our collection yet', '<p>Barcode <b>' + esc(digits) + '</b> isn\u2019t saved on anything we\u2019ve got. If you think we have it, show ' + esc(PRIV) + '!</p>', [{ label: '\uD83D\uDCF7 Scan another', value: 'again', cls: 'main' }, { label: 'OK', value: false }]).then(function (v) { if (v === 'again') openScanner({}); });
-      return;
+    showUnknownBarcode(digits);
+  }
+
+  function bcLookCardHtml(digits, look) {
+    var h = '<p class="hint">Barcode</p><div class="addBcCode">' + esc(digits) + '</div>';
+    if (look === 'wait') return h + '<p class="hint" id="bcLookBox">Looking it up\u2026 name, brand and a reference picture if we can find them.</p>';
+    if (look && look.name) {
+      return h + '<div id="bcLookBox" class="addBcFound"><p><b>' + esc(look.name) + '</b>' +
+        (look.brand ? '<br><small>' + esc(look.brand) + '</small>' : '') + '</p>' +
+        (look.image ? '<img class="addBcRef" alt="Reference only, not our photo" src="' + esc(look.image) + '" onerror="this.remove()">' : '') +
+        '<p class="hint">Reference only \u2014 this picture is not saved as our photo.</p></div>';
     }
-    sheet('\uD83E\uDD37 No match for that barcode yet', '<p>Barcode <b>' + esc(digits) + '</b> isn\u2019t saved on any item yet. Most of the collection doesn\u2019t have barcodes saved, so <b>search by name</b> - if you\u2019ve got it, tap it to save the barcode and next time it\u2019ll match straight away.</p>' +
-      '<div class="search"><input id="bcName" type="search" placeholder="\uD83D\uDD0D What is it? e.g. Bartman 503" autocomplete="off" style="font-size:20px"></div><div id="bcNameOut"></div>' +
-      '<div class="stack" style="margin-top:10px"><a class="btn full" href="https://www.google.co.uk/search?q=' + encodeURIComponent(digits) + '" target="_blank" rel="noopener">\uD83D\uDD0E Look the barcode up on Google \u2197</a>' +
-      '<button class="btn yel full" data-act="bcAddNew">\u2795 It\u2019s new - add it with this barcode</button></div>',
-      [{ label: '\uD83D\uDCF7 Scan another', value: 'again' }, { label: 'Close', value: false, cls: 'main' }]).then(function (v) { if (v === 'again') openScanner({}); });
-    var inp = $('bcName'), t = null;
-    inp.addEventListener('input', function () {
-      clearTimeout(t); t = setTimeout(function () {
-        var res = fuzzyFind(inp.value, (S.items || []).filter(function (it) { return !neverShow(it.name); }), 6);
-        $('bcNameOut').innerHTML = !inp.value.trim() ? '' : (res.length ? '<p class="hint">Tap the one it is to save the barcode on it:</p><div class="list">' + res.map(function (x) {
-          return '<button class="li ownLi" data-act="bcAssign" data-key="' + esc(x.it.key) + '">' + thumbHtml(x.it) + '<div class="grow">' + esc(x.it.name) + '<small>' + esc([x.it.range, x.it.status].filter(Boolean).join(' \u00B7 ')) + '</small></div><span class="pill green">This one</span></button>';
-        }).join('') + '</div>' : '<div class="nudge">\u274C Nothing in the collection matches that name.</div>');
-        watchThumbs();
-      }, 150);
+    return h + '<p class="hint" id="bcLookBox">No name found for this barcode yet. You can still add it or save it for Dad.</p>';
+  }
+  function paintBcLookBox(digits, look) {
+    var box = $('bcLookBox'); if (!box) return;
+    var wrap = document.createElement('div');
+    wrap.innerHTML = bcLookCardHtml(digits, look);
+    var next = wrap.querySelector('#bcLookBox') || wrap.firstChild;
+    box.replaceWith(next);
+  }
+  function startLookForSheet(digits, cb) {
+    lookupBarcode(digits).then(function (r) { paintBcLookBox(digits, r || null); if (cb) cb(r || null); }, function () { paintBcLookBox(digits, null); if (cb) cb(null); });
+  }
+  function startKidAddFromScan(info) {
+    info = info || {};
+    var look = info.look || null;
+    S.add = {
+      step: 1, shots: [], name: (look && look.name) || info.name || '', range: (look && look.range) || '',
+      condition: '', more: { maker: (look && look.brand) || info.brand || '' },
+      barcode: info.digits, bcLook: look || null, bcRef: (look && look.image) || ''
+    };
+    go('add');
+  }
+  function askDadForScan(why, after) {
+    S.pinWhy = why;
+    S.pinAfter = after || {};
+    S.pinReturn = { screen: S.screen, params: S.params || {} };
+    S.kidExit = false;
+    askDadPin(PRIV);
+  }
+  function queueScanForDad(payload) {
+    busy('Saving it for Dad\u2026');
+    return call('queueScan', {
+      barcode: payload.digits || payload.barcode,
+      name: (payload.look && payload.look.name) || payload.name || '',
+      brand: (payload.look && payload.look.brand) || payload.brand || '',
+      image: (payload.look && payload.look.image) || payload.image || '',
+      key: payload.key || '',
+      item: payload.item || payload.name || '',
+      kind: payload.kind || 'new'
+    }, S.kid ? KID_ROLE : S.role).then(function (r) {
+      done();
+      toast('Saved for Dad \u2014 he\u2019ll see it on his Home.', 'good');
+      return r;
+    }, function (e) {
+      done();
+      if (/unknown action/i.test((e && e.message) || '')) {
+        toast('This needs the latest sheet update (v4.7) before it can wait for Dad. Use \u201CDad, add it\u201D for now.', 'oops');
+        return null;
+      }
+      oops(e);
+      return null;
     });
   }
+  function loadScanQueue() {
+    return call('getScanQueue', S.role).then(function (r) { return r || { waiting: 0, pending: [] }; }, function (e) {
+      if (/unknown action/i.test((e && e.message) || '')) return { waiting: 0, pending: [], unsupported: true };
+      throw e;
+    });
+  }
+  function paintScanQueueHome(r) {
+    var box = $('homeScanQ'); if (!box) return;
+    var n = (r && (r.waiting != null ? r.waiting : (r.pending ? r.pending.length : 0))) || 0;
+    if (S.boot && typeof S.boot.scanQueue === 'number' && !r) n = S.boot.scanQueue;
+    if (!n) { box.innerHTML = ''; return; }
+    box.innerHTML = '<div class="card yel tile" id="scanQTile"><div class="head">\uD83C\uDFF7\uFE0F Waiting for Dad</div><div class="big">' + n + '</div>' +
+      '<div class="hint">scan' + (n === 1 ? '' : 's') + ' saved for you to add or dismiss.</div>' +
+      '<button class="btn main" data-act="go" data-to="scanQueue">Review</button></div>';
+  }
+  function showUnknownBarcode(digits) {
+    S.lastCode = digits;
+    var lookState = 'wait';
+    var body = function () {
+      return bcLookCardHtml(digits, lookState) +
+        (S.kid ? '' :
+          '<div class="search" style="margin-top:10px"><input id="bcName" type="search" placeholder="\uD83D\uDD0D What is it? e.g. Bartman 503" autocomplete="off" style="font-size:20px"></div><div id="bcNameOut"></div>' +
+          '<div class="stack" style="margin-top:10px"><a class="btn full" href="https://www.google.co.uk/search?q=' + encodeURIComponent(digits) + '" target="_blank" rel="noopener">\uD83D\uDD0E Look the barcode up on Google \u2197</a>' +
+          '<button class="btn yel full" data-act="bcAddNew">\u2795 It\u2019s new - add it with this barcode</button></div>');
+    };
+    var buttons = S.kid
+      ? [{ label: 'Dad, add it', value: 'dad', cls: 'main' }, { label: 'Save for Dad later', value: 'later' }, { label: '\uD83D\uDCF7 Scan another', value: 'again' }, { label: 'Close', value: '' }]
+      : [{ label: '\uD83D\uDCF7 Scan another', value: 'again' }, { label: 'Close', value: false, cls: 'main' }];
+    sheet(S.kid ? '\uD83E\uDD37 Not in our collection yet' : '\uD83E\uDD37 No match for that barcode yet',
+      (S.kid ? '<p>This barcode isn\u2019t saved on anything we\u2019ve got yet.</p>' : '<p>This barcode isn\u2019t saved on any item yet. Most of the collection doesn\u2019t have barcodes saved, so <b>search by name</b> \u2014 if you\u2019ve got it, tap it to save the barcode and next time it\u2019ll match straight away.</p>') + body(),
+      buttons).then(function (v) {
+      var info = { digits: digits, look: S.lastLook || null, kind: 'new' };
+      if (v === 'again') openScanner({});
+      else if (v === 'dad') askDadForScan('bcAdd', info);
+      else if (v === 'later') queueScanForDad(info);
+    });
+    if (!S.kid) {
+      var inp = $('bcName'), t = null;
+      if (inp) inp.addEventListener('input', function () {
+        clearTimeout(t); t = setTimeout(function () {
+          var res = fuzzyFind(inp.value, (S.items || []).filter(function (it) { return !neverShow(it.name); }), 6);
+          $('bcNameOut').innerHTML = !inp.value.trim() ? '' : (res.length ? '<p class="hint">Tap the one it is to save the barcode on it:</p><div class="list">' + res.map(function (x) {
+            return '<button class="li ownLi" data-act="bcAssign" data-key="' + esc(x.it.key) + '">' + thumbHtml(x.it) + '<div class="grow">' + esc(x.it.name) + '<small>' + esc([x.it.range, x.it.status].filter(Boolean).join(' \u00B7 ')) + '</small></div><span class="pill green">This one</span></button>';
+          }).join('') + '</div>' : '<div class="nudge">\u274C Nothing in the collection matches that name.</div>');
+          watchThumbs();
+        }, 150);
+      });
+    }
+    startLookForSheet(digits, function (r) { S.lastLook = r; });
+  }
+  function showAssignBarcode(digits, assign) {
+    S.lastCode = digits;
+    S.lastLook = null;
+    var buttons = S.kid
+      ? [{ label: 'Dad, save it', value: 'dad', cls: 'main' }, { label: 'Save for Dad later', value: 'later' }, { label: 'Cancel', value: '' }]
+      : [{ label: 'Yes, save it', value: 'save', cls: 'main' }, { label: 'Cancel', value: '' }];
+    sheet('\uD83C\uDFF7\uFE0F Scan barcode',
+      '<p>Save this barcode onto <b>' + esc(assign.name) + '</b>? Next time you scan this box it\u2019ll match straight away.</p>' + bcLookCardHtml(digits, 'wait'),
+      buttons).then(function (v) {
+      var info = { digits: digits, look: S.lastLook || null, kind: 'assign', key: assign.key, item: assign.name, name: assign.name };
+      if (v === 'save') saveBarcodeTo(assign.key, assign.name, digits).then(function () { if (S.screen === 'item' || S.screen === 'kidItem') go(S.screen, S.params, true); });
+      else if (v === 'dad') askDadForScan('bcAssign', info);
+      else if (v === 'later') queueScanForDad(info);
+    });
+    startLookForSheet(digits, function (r) { S.lastLook = r; });
+  }
+  function scanQAdd(id) {
+    loadScanQueue().then(function (r) {
+      var x = ((r && r.pending) || []).filter(function (q) { return q.id === id; })[0];
+      if (!x) { toast('That one isn\u2019t waiting any more.', 'oops'); go('scanQueue', {}, true); return; }
+      if (x.kind === 'assign' && x.key) {
+        busy('Saving the barcode\u2026');
+        return saveBarcodeTo(x.key, x.item || x.name, x.barcode).then(function () {
+          return call('markScanAdded', id, S.role).catch(function (e) { if (!/unknown action/i.test((e && e.message) || '')) throw e; });
+        }).then(function () { done(); go('item', { key: x.key }); }).catch(oops);
+      }
+      S.add = { step: 1, shots: [], name: x.name || '', range: '', condition: '', more: { maker: x.brand || '' }, barcode: x.barcode, bcLook: (x.name ? { name: x.name, brand: x.brand, image: x.image } : null), bcRef: x.image || '', scanQId: id };
+      call('markScanAdded', id, S.role).catch(function (e) { if (!/unknown action/i.test((e && e.message) || '')) oops(e); }).then(function () { go('add'); });
+    }).catch(oops);
+  }
+  function scanQDismiss(id) {
+    confirmSheet('Dismiss this scan?', 'It will be marked dismissed and stay in the sheet. Nothing is deleted.', 'Yes, dismiss', 'Keep it').then(function (ok) {
+      if (!ok) return;
+      busy('Marking it dismissed\u2026');
+      return call('dismissScan', id, S.role).then(function () { done(); toast('Dismissed \u2014 it is still in the sheet.', 'good'); go('scanQueue', {}, true); }, function (e) {
+        done();
+        if (/unknown action/i.test((e && e.message) || '')) toast('This needs the latest sheet update (v4.7).', 'oops');
+        else oops(e);
+      });
+    });
+  }
+
 
   /* ================= v4: collection value on Home (private) ================= */
   function monthKey(d) { d = d || new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2); }
@@ -737,7 +869,7 @@
     }).join('');
     $('whoBadge').textContent = S.kid ? KID_ROLE + '\u2019s mode' : (S.role ? 'Hi ' + S.role + ' \u00B7 tap to switch' : THEME.tagline);
   }
-  var MORE_SCREENS = ['more', 'stats', 'posted', 'spares', 'swaps', 'wheel', 'history', 'export', 'help', 'settings', 'value', 'photos', 'novalue', 'checklists', 'rewards'];
+  var MORE_SCREENS = ['more', 'stats', 'posted', 'spares', 'swaps', 'wheel', 'history', 'export', 'help', 'settings', 'value', 'photos', 'novalue', 'checklists', 'rewards', 'scanQueue'];
   function go(screen, params, noHistory) {
     closeTour(); if ($('lightbox')) $('lightbox').hidden = true;
     if (S.kid) { if (screen === 'item') screen = 'kidItem'; else if (KID_SCREENS.indexOf(screen) < 0) { screen = 'kid'; params = {}; } }
@@ -1106,7 +1238,8 @@
   var HELP = {
     home: ['This is your to-do board.', '\u201CDo I own it?\u201D at the top: type any name and it tells you straight away. Or tap \uD83D\uDCF7 Scan and point at a box\u2019s barcode.', 'Each box has one button that sorts that job out. Start with whichever has the biggest number.', 'No signal? The app shows the copy saved on the phone and syncs your changes later.'],
     collection: ['Everything you own, with the newest photo of each.', 'Type in the search box or use the three filters (range, status, condition).', 'Tap any picture to open it.'],
-    item: ['This is one item.', 'Tap \u201CAdd photo / video\u201D to use the camera - it saves straight into the item\u2019s own Drive folder.', 'Tap a photo to see it big, or make it the main photo. Videos play here in the app (Open in Drive is still there if you need it).', 'Tap \u201CEdit details\u201D to fix the name, category, condition and so on.', 'Tap a platform under \u201CPosted on\u201D once it\u2019s been posted.'],
+    item: ['This is one item.', 'Tap \u201CAdd photo / video\u201D to use the camera - it saves straight into the item\u2019s own Drive folder.', 'Tap a photo to see it big, or make it the main photo. Videos play here in the app (Open in Drive is still there if you need it).',
+    'Tap Scan barcode to link a box\u2019s number. You\u2019ll see the looked-up name before it is saved.', 'Tap \u201CEdit details\u201D to fix the name, category, condition and so on.', 'Tap a platform under \u201CPosted on\u201D once it\u2019s been posted.'],
     edit: ['Change anything, then tap Save.', 'Year is just the 4 numbers, like 1999. Anything else goes in Year note.', 'Nothing gets deleted from here - the worst that can happen is a typo you can fix.'],
     add: ['Four quick steps: photo, name, range, condition.', 'On the name step you can scan or type the barcode so it\u2019s saved with the new item.', 'If we find a match we\u2019ll fill the name, maker and range for you to check. A catalogue picture is a reference only — it is never saved as our photo.', 'Everything else is optional - you can add it later.', 'If it looks like you already have it, I\u2019ll ask before adding a second one.'],
     wanted: ['Things you\u2019re hunting for.', 'Got one? Tap \u201CGot it\u201D and it moves into the collection (I\u2019ll check first).'],
@@ -1153,6 +1286,31 @@
   /* ---------------- screens ---------------- */
   var SCREENS = {};
 
+  SCREENS.scanQueue = function () {
+    if (S.kid) { go('kid', {}, true); return; }
+    busy('Opening the scan queue\u2026');
+    loadScanQueue().then(function (r) {
+      done();
+      if (r.unsupported) {
+        setMain(backBtn() + '<h1>\uD83C\uDFF7\uFE0F Scan queue</h1><div class="nudge">This needs the latest Apps Script (v4.7) pasted into the sheet. Until then, nothing is waiting here.</div>');
+        return;
+      }
+      var list = r.pending || [];
+      var h = backBtn() + '<h1>\uD83C\uDFF7\uFE0F Scan queue</h1><p class="hint">Things ' + esc(KID_ROLE) + ' saved for you. Add one, or dismiss it (it stays in the sheet, marked dismissed \u2014 nothing is deleted).</p>';
+      if (!list.length) h += '<div class="nudge">Nothing waiting just now.</div>';
+      h += list.map(function (x) {
+        return '<div class="card scanQItem"><div class="addBcCode">' + esc(x.barcode) + '</div>' +
+          (x.image ? '<img class="addBcRef" alt="" src="' + esc(x.image) + '" onerror="this.remove()">' : '') +
+          '<p><b>' + esc(x.name || 'No name found yet') + '</b>' + (x.brand ? '<br><small>' + esc(x.brand) + '</small>' : '') + '</p>' +
+          '<p class="hint">' + (x.kind === 'assign' ? 'Save onto ' + esc(x.item || x.key) : 'New item to add') + (x.day ? ' \u00B7 ' + esc(x.day) : '') + '</p>' +
+          '<div class="row"><button class="btn main" data-act="scanQAdd" data-id="' + esc(x.id) + '">' + (x.kind === 'assign' ? 'Save on item' : 'Add it') + '</button>' +
+          '<button class="btn" data-act="scanQDismiss" data-id="' + esc(x.id) + '">Dismiss</button></div></div>';
+      }).join('');
+      setMain(h);
+    }).catch(oops);
+  }
+
+
   /* ================= v4: Son's mode (big tiles, photos, no money, nothing Christmassy) ================= */
   var KID_ROLE = THEME.roles.filter(function (r) { return r !== PRIV; })[0] || 'Son';
   var KID_SCREENS = ['kid', 'kidStuff', 'kidItem', 'kidHunt', 'kidBadges', 'kidRewards', 'kidNotes', 'pin', 'add', 'swaps', 'wheel', 'checklists', 'checklist'];
@@ -1192,6 +1350,7 @@
       var mine = kidItems();
       var h = '<div class="kidHead"><div class="mascot small">' + THEME.mascotSvg.replace(/fsBite/g, 'fsBiteK') + '</div><h1>Hiya wee man \uD83D\uDC4B</h1></div>' +
         jokeHtml() +
+        '<div id="kidRewardsHome"></div>' +
         funWorthHtml() +
         '<div class="kfeatures">' +
         '<button type="button" class="kfeature pinkL" data-act="go" data-to="kidBadges"><span>\uD83C\uDFC6</span><span class="kfeatTxt"><b>My badges</b><small id="kidBadgeN">see what you\u2019ve earned</small></span></button>' +
@@ -1218,7 +1377,7 @@
       paintHomeFunAndMiles();
       checkNewBadges().then(function (B) { var n = B.filter(function (b) { return b.got; }).length; if ($('kidBadgeN')) $('kidBadgeN').textContent = n + ' badge' + (n === 1 ? '' : 's') + ' so far!'; paintMissions(B); }).catch(noop);
       loadHomeWanted().then(function (w) { var n = w.filter(function (x) { return kidSafe(x); }).length; if ($('kidHuntN')) $('kidHuntN').textContent = n + ' to find!'; });
-      loadRewards(true).then(function (r) { if ($('kidPtsN') && r) $('kidPtsN').textContent = r.balance + ' points \u00B7 ' + ((r.level && r.level.name) || ''); try { paintJobs(r); } catch (eJ) {} try { paintEarnPoints(r); } catch (eE) {} }).catch(noop);
+      loadRewards(true).then(function (r) { if ($('kidPtsN') && r) $('kidPtsN').textContent = r.balance + ' points \u00B7 ' + ((r.level && r.level.name) || ''); try { paintRewardsHome(r); } catch (eR) {} try { paintJobs(r); } catch (eJ) {} try { paintEarnPoints(r); } catch (eE) {} }).catch(noop);
       recordBadgeVisit();
       maybeShowLetter();
       bindFunSwipe();
@@ -1260,6 +1419,8 @@
         '<h1>' + esc(it.name) + '</h1><div class="chips" style="justify-content:center">' + [it.range, it.character, it.year].filter(function (x) { return x && !/^unknown$/i.test(x); }).map(function (x) { return '<span class="chip on">' + esc(x) + '</span>'; }).join('') + '</div>' +
         '<div id="kGallery" class="gallery kidGal"></div>' +
         '<div class="stack" style="margin-top:14px"><button class="btn main full kbtn" data-act="kidSnap">\uD83D\uDCF7 Add a photo</button>' +
+        '<button class="btn full kbtn" data-act="scanAssign">\uD83D\uDCF7 Scan barcode</button>' +
+        (itemBarcode(it) ? '<p class="hint">Saved barcode: ' + esc(itemBarcode(it)) + '</p>' : '') +
         (it.status === 'Wanted' || it.status === 'On order' ? '<button class="btn green full kbtn" data-act="kidGotItem">\uD83C\uDF89 We got it!</button>' : '<div class="pill green" style="font-size:18px;padding:6px 14px">\u2705 We\u2019ve got this!</div>') +
         '</div></div>';
       setMain(h);
@@ -2602,14 +2763,53 @@
   function rwAction(a) {
     return ({ photo: 'Photo', found: 'Ticked off a find', update: 'Updated something', add: 'New item', streak: '3-day streak bonus', job: 'Job done' })[a] || a;
   }
-  function paintRewardsHome(r) {
-    var box = $('rwHomeTile'); if (!box || !r) return;
+  function nextRewardGoal(r) {
+    var list = activeRewards(r), bal = (r && r.balance) || 0, i;
+    for (i = 0; i < list.length; i++) {
+      if ((list[i].cost || 0) > bal) return { item: list[i], need: list[i].cost - bal, canAsk: false };
+    }
+    if (list.length) return { item: list[list.length - 1], need: 0, canAsk: true };
+    return null;
+  }
+  function rewardsHomeCardHtml(r, kid) {
+    if (!r) return '';
+    var list = activeRewards(r), bal = r.balance || 0, nxt = nextRewardGoal(r);
     var bits = [];
-    if (r.queue && r.queue.length) bits.push(r.queue.length + ' photo' + (r.queue.length === 1 ? '' : 's') + ' waiting');
-    if (r.pendingRequests && r.pendingRequests.length) bits.push(r.pendingRequests.length + ' reward' + (r.pendingRequests.length === 1 ? '' : 's') + ' to decide');
-    box.innerHTML = '<div class="head">\u2B50 ' + esc(KID_ROLE) + '\u2019s rewards</div>' +
-      '<div class="big">' + r.earned + '</div><div class="hint">points earned' + (bits.length ? ' \u00B7 ' + bits.join(' \u00B7 ') : '') + '</div>' +
-      '<button class="btn main" data-act="go" data-to="rewards">' + (bits.length ? 'Review' : 'Open') + '</button>';
+    if (!kid && r.queue && r.queue.length) bits.push(r.queue.length + ' photo' + (r.queue.length === 1 ? '' : 's') + ' waiting');
+    if (!kid && r.pendingRequests && r.pendingRequests.length) bits.push(r.pendingRequests.length + ' reward' + (r.pendingRequests.length === 1 ? '' : 's') + ' to decide');
+    var h = '<div class="card yel rwHomeCard"><h2>\u2B50 ' + (kid ? 'My rewards' : esc(KID_ROLE) + '\u2019s rewards') + '</h2>' +
+      '<p class="funSub">' + bal + ' point' + (bal === 1 ? '' : 's') + ' to spend' +
+      ((r.level && r.level.name) ? ' \u00B7 ' + esc(r.level.name) : '') +
+      (bits.length ? ' \u00B7 ' + bits.join(' \u00B7 ') : '') + '</p>';
+    if (nxt && nxt.item) {
+      h += '<div class="rwNext">' + (nxt.canAsk
+        ? '<b>Ready to ask</b>'
+        : '<b>Next up</b>') +
+        '<span class="grow"><b>' + esc(nxt.item.title) + '</b>' +
+        (nxt.canAsk ? '<small>Enough points for this one</small>' : '<small>' + nxt.need + ' more points to go</small>') +
+        '</span><span class="pill">' + nxt.item.cost + ' pts</span></div>';
+    } else {
+      h += '<p class="hint">Dad hasn\u2019t set any rewards yet.</p>';
+    }
+    h += '<div class="rwList rwHomeList">';
+    list.forEach(function (x) {
+      var pending = kid && rwArr(r.requests).some(function (q) { return q.title === x.title && q.status === 'Pending'; });
+      var need = x.cost - bal;
+      var right = pending ? '<span class="pill yel">Asked</span>' :
+        (need > 0 ? '<span class="hint">' + need + ' to go</span>' : '<span class="pill green">Ready</span>');
+      h += '<div class="rwItem rwHomeItem"><div class="row"><b>' + esc(x.title) + '</b><span class="pill">' + x.cost + ' pts</span></div>' + right + '</div>';
+    });
+    h += '</div>';
+    if (kid) h += '<button type="button" class="btn main" data-act="go" data-to="kidRewards">Open my points</button>';
+    else if (isPriv()) h += '<button type="button" class="btn main" data-act="go" data-to="rewards">Open rewards</button>';
+    h += '</div>';
+    return h;
+  }
+  function paintRewardsHome(r) {
+    var box = $('kidRewardsHome') || $('homeRewards') || $('rwHomeTile');
+    if (!box || !r) return;
+    try { box.innerHTML = rewardsHomeCardHtml(r, !!S.kid); }
+    catch (e) { box.innerHTML = '<div class="card yel"><h2>\u2B50 Rewards</h2><p class="hint">Couldn\u2019t show the list just now. Try refresh.</p></div>'; }
   }
   function rwLevelCard(r) {
     var lv = r.level || {}, nextAt = lv.nextAt, have = r.earned || 0, min = lv.min || 0;
@@ -3171,6 +3371,17 @@
       S.pinBusy = false;
       S.pinDigits = '';
       if (r && r.ok && r.token) {
+        var why = S.pinWhy || '';
+        var after = S.pinAfter || {};
+        S.pinWhy = ''; S.pinAfter = null;
+        if (why === 'bcAdd' || why === 'bcAssign') {
+          // Stay in Son's mode. Do not store a Dad-view token, so it is never sent with later calls.
+          if (why === 'bcAdd') startKidAddFromScan(after);
+          else if (after.key) saveBarcodeTo(after.key, after.item || after.name, after.digits).then(function () {
+            go('kidItem', { key: after.key }, true);
+          });
+          return;
+        }
         storeDadToken(r.token, r.expires);
         if (S.kidExit) { leaveKid(PRIV); return; }
         enterRole(S.pendingRole || PRIV);
@@ -3195,8 +3406,11 @@
       if (k === 'del') return '<button type="button" class="pinKey" data-act="pinDel" aria-label="Delete">\u2190</button>';
       return '<button type="button" class="pinKey" data-act="pinDigit" data-d="' + k + '"' + (S.pinBusy ? ' disabled' : '') + '>' + k + '</button>';
     }).join('');
+    var pinHint = 'Enter the 4-digit PIN to open ' + esc(PRIV) + ' view. Prices stay hidden until then.';
+    if (S.pinWhy === 'bcAdd') pinHint = 'Type ' + esc(PRIV) + '\u2019s PIN to add this item. We stay in ' + esc(KID_ROLE) + '\u2019s mode \u2014 no prices.';
+    if (S.pinWhy === 'bcAssign') pinHint = 'Type ' + esc(PRIV) + '\u2019s PIN to save this barcode. We stay in ' + esc(KID_ROLE) + '\u2019s mode \u2014 no prices.';
     setMain('<div class="card yel center pinCard' + (err ? ' bad' : '') + '"><h1>\uD83D\uDD12 ' + esc(PRIV) + '\u2019s PIN</h1>' +
-      '<p class="hint">Enter the 4-digit PIN to open ' + esc(PRIV) + ' view. Prices stay hidden until then.</p>' +
+      '<p class="hint">' + pinHint + '</p>' +
       '<div class="pinDots" aria-hidden="true">' + dots + '</div>' +
       (S.pinBusy ? '<p class="hint">Checking\u2026</p>' : (err ? '<p class="pinErr">' + esc(err) + '</p>' : '<p class="hint">&nbsp;</p>')) +
       '<div class="pinPad" role="group" aria-label="PIN pad">' + pad + '</div>' +
@@ -3224,8 +3438,9 @@ SCREENS.who = function () {
       if (b.missing && (b.missing.tabs.length || b.missing.columns.length)) {
         h += '<div class="warn">\uD83D\uDEA7 The sheet is still being tidied up, so a few bits (like ' + esc(b.missing.columns.concat(b.missing.tabs).join(', ')) + ') will appear once that\u2019s finished. Everything else works.</div>';
       }
+      h += '<div id="homeRewards"></div>';
       h += '<div id="homeOnThisDay"></div><div id="homeSetBars"></div>';
-      if (S.role === PRIV) h += '<div id="homeWeek"></div>';
+      if (S.role === PRIV) h += '<div id="homeScanQ"></div><div id="homeWeek"></div>';
       h += '<div class="tiles">';
       h += '<div class="card yel tile"><div class="head">\uD83C\uDFA1 Spin the wheel</div><div class="hint">Picks something we already own to film next. Prefers things not posted yet.</div><button class="btn main" data-act="go" data-to="wheel">Have a spin</button></div>';
       h += '<div class="card tile"><div class="head">\uD83D\uDD01 Doubles to swap</div><div class="hint">Spare copies, with photos and no prices.</div><button class="btn main" data-act="go" data-to="swaps">See doubles</button></div>';
@@ -3236,7 +3451,7 @@ SCREENS.who = function () {
           '<button class="btn small" data-act="go" data-to="photos">See all ' + t.photos.count + '</button>';
       } else h += '<div class="hint">All done - every item has photos. \uD83C\uDF89</div>';
       h += '</div>';
-      if (isPriv()) h += '<div class="card pinkL tile" id="rwHomeTile"><div class="head">\u2B50 ' + esc(KID_ROLE) + '\u2019s rewards</div><div class="hint">Points, photo approvals and rewards.</div><button class="btn main" data-act="go" data-to="rewards">Open</button></div>';
+      // Rewards list lives in #homeRewards (full card, both unlocked and not)
       // No value
       h += '<div class="card skyL tile"><div class="head">\uD83D\uDCB7 No value yet</div><div class="big">' + t.noValue.count + '</div>';
       if (isPriv() && t.noValue.next) h += '<div class="hint">Next: <b>' + esc(t.noValue.next.name) + '</b></div><button class="btn main" data-act="valueFor" data-key="' + esc(t.noValue.next.key) + '">Add a value</button>' +
@@ -3264,17 +3479,21 @@ SCREENS.who = function () {
       h += '<div class="row" style="margin-top:6px"><button class="btn small" data-act="refresh">\u21BB Refresh</button><button class="btn small" data-act="go" data-to="stats">\uD83D\uDCCA Stats</button><button class="btn small" data-act="go" data-to="checklists">\u2705 Checklists</button><button class="btn small" data-act="go" data-to="help">\u2753 Help</button></div>';
       setMain(h);
       paintHomeFunAndMiles();
+      if (S.role === PRIV) {
+        if (b && typeof b.scanQueue === 'number') paintScanQueueHome({ waiting: b.scanQueue });
+        loadScanQueue().then(paintScanQueueHome).catch(noop);
+      }
       if (LS.get('tourPending')) { LS.set('tourPending', ''); setTimeout(startTour, 350); }
       var hs = $('homeSearch');
       hs.addEventListener('keydown', function (e) { if (e.key === 'Enter') { hs.blur(); } });
       bindOwnSearch('homeSearch', 'ownOut');
       refreshDealBadges();
       loadHomeWanted();
+      loadRewards(true).then(paintRewardsHome).catch(noop);
       if (isPriv()) {
         call('getValueSummary', S.role).then(function (vs) {
           if (vs && typeof vs.total === 'number' && $('valueBox') && S.screen === 'home') $('valueBox').innerHTML = valueCardHtml(vs);
         }).catch(noop);
-        loadRewards(true).then(paintRewardsHome).catch(noop);
       }
     }).catch(oops);
   };
@@ -3384,7 +3603,8 @@ SCREENS.who = function () {
         '<div id="nudge"></div>' +
         '<div class="stack" style="margin:12px 0"><button class="btn main full" data-act="snapCurrent">\uD83D\uDCF7 Take photo</button>' +
         '<div class="row"><button class="btn" style="flex:1" data-act="pickCurrent">\uD83D\uDDBC\uFE0F From gallery</button><button class="btn" style="flex:1" data-act="videoCurrent">\uD83C\uDFA5 Record video</button></div>' +
-        '<div class="row"><button class="btn" style="flex:1" data-act="replaceMain">\uD83D\uDD04 New main photo</button><button class="btn" style="flex:1" data-act="scanAssign">\uD83C\uDFF7\uFE0F ' + ((it.barcode || itemBarcode(itemByKey(it.key))) ? 'Change barcode' : 'Save barcode') + '</button></div>' +
+        '<div class="row"><button class="btn" style="flex:1" data-act="replaceMain">\uD83D\uDD04 New main photo</button><button class="btn" style="flex:1" data-act="scanAssign">\uD83D\uDCF7 Scan barcode</button></div>' +
+        ((it.barcode || itemBarcode(itemByKey(it.key))) ? '<p class="hint">Saved barcode: ' + esc(it.barcode || itemBarcode(itemByKey(it.key))) + '</p>' : '') +
         (it.offlineCopy ? '<div class="nudge">\uD83D\uDCF4 Offline copy - the full details and photos load when you\u2019re back online.</div>' : '') +
         '<div class="row"><button class="btn yel" style="flex:1" data-act="edit">\u270F\uFE0F Edit details</button>' +
         (it.folderId ? '<a class="btn" style="flex:1" href="https://drive.google.com/drive/folders/' + esc(it.folderId) + '" target="_blank" rel="noopener">\uD83D\uDCC1 Folder \u2197</a>' : '') + '</div>' +
@@ -3981,6 +4201,7 @@ SCREENS.who = function () {
       ['photos', '\uD83D\uDCF8', 'Photos to take', 'Items still needing our own photos']
     ];
     if (isPriv()) {
+      tiles.push(['scanQueue', '\uD83C\uDFF7\uFE0F', 'Scan queue', 'Barcodes saved for you to add or dismiss']);
       tiles.push(['rewards', '\u2B50', KID_ROLE + '\u2019s rewards', 'Points, photo approvals, activity log']);
       tiles.push(['badgeEdit', '\uD83C\uDFC6', KID_ROLE + '\u2019s badges', 'Add badges, change tiers, mark earned']);
       tiles.push(['value', '\uD83D\uDCB7', 'Value', 'Private: totals, top 10, paid vs value']);
@@ -3997,7 +4218,7 @@ SCREENS.who = function () {
   var FAQ = [
     ['\u2795 Adding something new', ['Tap <b>Add</b> at the bottom.', 'Take a photo (front first), type a name, pick the category, then the condition. That\u2019s it.', 'Everything else (year, maker, packaging, price) is optional under \u201CMore details\u201D.', 'If it looks like you already have it, I\u2019ll ask before adding a second one.']],
     ['\uD83D\uDCF8 Photos', ['Open any item and tap <b>Add photo / video</b>. It saves straight into that item\u2019s own Drive folder. Videos play in the app when you tap them; Open in Drive is still there as a fallback.', 'Tap <b>New main photo</b> to replace the picture that shows in the lists. The old one stays in the folder - nothing is deleted.', 'Tap any photo to see it big, then <b>Make main photo</b> to pick a different main one.', 'No faces in shot, please. Hands are fine.']],
-    ['\uD83E\uDD14 Do I own it? + barcode scan', ['Type any name in <b>Do I own it?</b> on Home - it tells you yes, maybe or no as you type, even with spelling mistakes.', 'Tap <b>\uD83D\uDCF7 Scan</b> and point the camera at a box\u2019s barcode. If the barcode is saved on an item it matches straight away.', 'First time for a barcode? Search the name and tap the item to save the barcode on it. Or open any item and tap <b>Save barcode</b>.']],
+    ['\uD83E\uDD14 Do I own it? + barcode scan', ['Type any name in <b>Do I own it?</b> on Home - it tells you yes, maybe or no as you type, even with spelling mistakes.', 'Tap <b>\uD83D\uDCF7 Scan</b> and point the camera at a box\u2019s barcode. If the barcode is saved on an item it matches straight away.', 'First time for a barcode? The app looks up the number and shows the name, brand and a reference picture if it can find them. In ' + esc(KID_ROLE) + '\u2019s mode, ' + esc(THEME.privateRole) + ' can type his PIN and add it (you stay in ' + esc(KID_ROLE) + '\u2019s mode, and you still earn add points), or save it for Dad later. Open any item and tap <b>Scan barcode</b> to link the number \u2014 you\u2019ll see the lookup before it is saved.']],
     ['\uD83D\uDCF4 No signal', ['The last collection you opened is kept on the phone, with photos you\u2019ve already seen.', 'Adds, edits, ticks and photos made with no signal are kept on the phone and sync on their own when you\u2019re back online.']],
     ['\uD83E\uDDD2 ' + KID_ROLE + '\u2019s mode', ['Big buttons and photos, no prices. Tick off finds on the hunt list and add photos.', 'A <b>letter from Dad</b> opens the first time each day, and you can read it again any time from the Home tile.', 'The <b>\u2B50 My points</b> page awards points for photos (once Dad says yes), ticks and new finds, with levels and real rewards Dad sets. Secret or hidden things never earn points, and there is never any money.', 'The <b>\uD83C\uDFC6 Badges</b> wall unlocks badges from the collection (10 Funkos, first rare find, finds this month, photos added\u2026) with confetti for each new one. No money badges, and secret or Christmas things never count.', 'Getting back to the full app needs ' + esc(THEME.privateRole) + '\u2019s PIN.']],
     ['\uD83D\uDD0D Finding things', ['Use the search box on Home or in Collection. It searches names, characters, lines and IDs.', 'Tap <b>Filters</b> to narrow down by category, line, condition, status, posted or photos.', 'Use the sort menu for newest first, A to Z or by year.']],
@@ -5140,7 +5361,7 @@ SCREENS.who = function () {
         S.pinDigits = (S.pinDigits || '').slice(0, -1);
         go('pin', {}, true);
         break;
-      case 'pinCancel': S.pendingRole = ''; S.pinDigits = ''; S.pinError = ''; if (S.kidExit) { S.kidExit = false; go('kid', {}, true); break; } go('who', {}, true); break;
+      case 'pinCancel': var pinWhy = S.pinWhy, pinRet = S.pinReturn; S.pendingRole = ''; S.pinDigits = ''; S.pinError = ''; S.pinWhy = ''; S.pinAfter = null; S.pinReturn = null; if (pinWhy) { go((pinRet && pinRet.screen) || (S.kid ? 'kid' : 'home'), (pinRet && pinRet.params) || {}, true); break; } if (S.kidExit) { S.kidExit = false; go('kid', {}, true); break; } go('who', {}, true); break;
       case 'lockPriv': lockDadView(); break;
       case 'item': $('sheet').hidden = true; if (key && key.indexOf('pending:') === 0) { toast('That one is waiting to sync - it\u2019ll open once you\u2019re back online.'); break; } go('item', { key: key }); break;
       case 'more': S.shown += 60; if (S.redrawGrid) S.redrawGrid(); break;
@@ -5197,7 +5418,11 @@ SCREENS.who = function () {
         var bi = itemByKey(key); if (!bi) break; $('sheet').hidden = true;
         saveBarcodeTo(bi.key, bi.name, S.lastCode); break;
       case 'bcAddNew':
-        $('sheet').hidden = true; S.add = { step: 1, shots: [], name: '', range: '', condition: '', more: {}, barcode: S.lastCode }; go('add'); break;
+        $('sheet').hidden = true;
+        S.add = { step: 1, shots: [], name: (S.lastLook && S.lastLook.name) || '', range: (S.lastLook && S.lastLook.range) || '', condition: '', more: { maker: (S.lastLook && S.lastLook.brand) || '' }, barcode: S.lastCode, bcLook: S.lastLook || null, bcRef: (S.lastLook && S.lastLook.image) || '' };
+        go('add'); break;
+      case 'scanQAdd': scanQAdd(el.getAttribute('data-id')); break;
+      case 'scanQDismiss': scanQDismiss(el.getAttribute('data-id')); break;
       case 'syncNow': syncQueue(); break;
       case 'letterOpen': showDadLetter(true); break;
       case 'letterGo': if (NAV.pushed > 0) layerBack(); else hideDadLetter(); break;
@@ -5245,7 +5470,7 @@ SCREENS.who = function () {
   });
   $('stuckBtn').addEventListener('click', function () {
     if (!S.kid) return showHelp();
-    sheet('How it works', '<ul><li>\uD83E\uDDF8 <b>Our stuff</b>: tap anything to see it big or add a photo. Videos play right here in the app.</li><li>\uD83C\uDFA1 <b>Spin the wheel</b>: picks something we already own to film next (it prefers things not posted yet).</li><li>\uD83D\uDD01 <b>Doubles to swap</b>: things we have more than one of, with photos and no prices.</li><li>\u2705 <b>Set progress</b> and <b>On this day</b> show on Home when there is something to see.</li><li>\u2B50 <b>Hunt</b>: things we\u2019re looking for. Found one? Tap \u201CFound it!\u201D</li><li>\uD83D\uDCF7 <b>Scan</b>: point at a box\u2019s barcode to see if we\u2019ve got it.</li><li>\u2709\uFE0F <b>Letter from Dad</b>: how it all started. It pops up every now and then, and you can open it again any time.</li><li>\uD83D\uDCDD <b>Notes from Dad</b>: a little note every few visits, and all of them under Notes from Dad.</li><li>\uD83D\uDE04 <b>A daft joke</b>: a new one when you open this mode. Tap it for another.</li><li>\uD83C\uDF66 <b>What\u2019s our collection worth?</b>: swipe or tap to try ice creams, Dons tickets, tractors and lots more.</li><li>\u2B50 <b>My points</b>: earn points and ask Dad for rewards.</li><li>\uD83E\uDDF9 <b>Jobs</b>: jobs from Dad, like clean your room. He taps Done and you get the points.</li><li>No faces in photos - hands are fine.</li></ul>',
+    sheet('How it works', '<ul><li>\uD83E\uDDF8 <b>Our stuff</b>: tap anything to see it big or add a photo. Videos play right here in the app.</li><li>\uD83C\uDFA1 <b>Spin the wheel</b>: picks something we already own to film next (it prefers things not posted yet).</li><li>\uD83D\uDD01 <b>Doubles to swap</b>: things we have more than one of, with photos and no prices.</li><li>\u2705 <b>Set progress</b> and <b>On this day</b> show on Home when there is something to see.</li><li>\u2B50 <b>Hunt</b>: things we\u2019re looking for. Found one? Tap \u201CFound it!\u201D</li><li>\uD83D\uDCF7 <b>Scan</b>: point at a box\u2019s barcode to see if we\u2019ve got it. If it is new, you\u2019ll see the name if we can find it, then Dad can add it (his PIN, we stay in your mode) or save it for later.</li><li>\u2709\uFE0F <b>Letter from Dad</b>: how it all started. It pops up every now and then, and you can open it again any time.</li><li>\uD83D\uDCDD <b>Notes from Dad</b>: a little note every few visits, and all of them under Notes from Dad.</li><li>\uD83D\uDE04 <b>A daft joke</b>: a new one when you open this mode. Tap it for another.</li><li>\uD83C\uDF66 <b>What\u2019s our collection worth?</b>: swipe or tap to try ice creams, Dons tickets, tractors and lots more.</li><li>\u2B50 <b>My points</b>: earn points and ask Dad for rewards.</li><li>\uD83E\uDDF9 <b>Jobs</b>: jobs from Dad, like clean your room. He taps Done and you get the points.</li><li>No faces in photos - hands are fine.</li></ul>',
       [{ label: '\u21BB Refresh', value: 'refresh' }, { label: 'Got it!', value: 'ok', cls: 'main' }]).then(function (v) { if (v === 'refresh') { S.boot = null; thumbsRefresh(); go(S.screen || 'kid', S.params, true); } });
   });
   $('homeBtn').addEventListener('click', function () { if (S.kid) { S.history = []; go('kid', {}, true); return; } if (S.role) { S.history = []; go(S.screen === 'home' ? 'settings' : 'home', {}, true); } });
