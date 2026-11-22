@@ -1,0 +1,23 @@
+Simpsons banner and welcome-card images used in this private family app.
+
+Character cut-outs (Homer, Bart, Lisa, Marge, Maggie, Mr Burns, family, Homer-in-donut)
+  downloaded from pngimg.com Simpsons gallery (simpsons_PNG*.png), then resized and
+  compressed to WebP for the app.
+
+Santa's Little Helper
+  preview cut-out from CityPNG (the-simpsons-racing-dog-santas-little-helper),
+  checkerboard background removed, signature area cleaned, compressed to WebP.
+
+Pink sprinkle donut
+  product cut-out from pngimg.com donut gallery (donut_PNG97494), resized.
+
+Springfield U.S.A. sign
+  cropped from "The Simpsons, Universal Studios, Orlando.jpg" by apasciuto,
+  CC BY 2.0, Wikimedia Commons.
+
+Kwik-E-Mart storefront (sign and roof crop, no people)
+  cropped from "Kwik-E-Mart (Orlando) May 2023.jpg" by Benoît Prieur,
+  CC0, Wikimedia Commons.
+
+Sky
+  original painted Springfield-style sky made for this app.

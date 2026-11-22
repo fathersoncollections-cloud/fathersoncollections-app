@@ -337,7 +337,7 @@
   function bindOwnSearch(inputId, outId) {
     var inp = $(inputId), out = $(outId), t = null; if (!inp || !out) return;
     var run = function () { out.innerHTML = ownResultHtml(inp.value); watchThumbs(); };
-    inp.addEventListener('input', function () { clearTimeout(t); t = setTimeout(run, 120); });
+    inp.addEventListener('input', function () { clearTimeout(t); t = setTimeout(function () { if ((inp.value || '').trim().length >= 2) bumpKid('kidSearches'); run(); }, 120); });
     if (inp.value) run();
   }
 
@@ -777,9 +777,26 @@
     return video ? '<span class="thNone" aria-label="Only a video so far">\uD83C\uDFAC<small>Video only</small></span>'
       : '<span class="thNone" aria-label="No photo yet">\uD83D\uDCF7<small>No photo yet</small></span>';
   }
+  /* v7l: local reference pictures for items with no Drive folder. Real photos always win. */
+  var STANDIN_IDS = {"FS-0066":1, "FS-0098":1, "FS-0124":1, "FS-0276":1, "FS-0304":1, "FS-0312":1, "FS-0412":1, "FS-0415":1, "FS-0417":1, "FS-0418":1, "FS-0423":1, "FS-0424":1};
+  function standinUrl(it) {
+    var id = it && it.id;
+    if (!id || !STANDIN_IDS[id] || it.folderId) return '';
+    return 'assets/standins/' + id + '.webp';
+  }
+  function filmBadgeHtml() {
+    return '<span class="filmBadge" title="Still needs a real photo"><img src="assets/simpsons/donut.webp" alt="">D\u2019oh! Still to film</span>';
+  }
+  function standinBlock(it, cls, extraAttr) {
+    var src = standinUrl(it);
+    if (!src) return '';
+    return '<div class="' + cls + ' isStandin"' + (extraAttr || '') + '><img class="standinImg" alt="" src="' + esc(src) + '">' + filmBadgeHtml() + '</div>';
+  }
   function thumbHtml(it) {
-    if (!it.folderId) return '<div class="thumb" data-nothumb>' + noPhotoHtml(false) + '</div>';
-    return '<div class="thumb" data-fid="' + esc(it.folderId) + '">' + thumbInner(it.folderId) + '</div>';
+    if (it.folderId) return '<div class="thumb" data-fid="' + esc(it.folderId) + '">' + thumbInner(it.folderId) + '</div>';
+    var s = standinBlock(it, 'thumb');
+    if (s) return s;
+    return '<div class="thumb" data-nothumb>' + noPhotoHtml(false) + '</div>';
   }
   function paintThumb(fid) {
     document.querySelectorAll('[data-fid="' + fid + '"]').forEach(function (el) { el.innerHTML = thumbInner(fid); });
@@ -1130,6 +1147,7 @@
     S.kidGreeting = true;
     pickFunUnitRandom();
     pickJokeOnOpen();
+    recordBadgeVisit();
     go('kid', {}, true);
   }
   function exitKid() {
@@ -1176,6 +1194,7 @@
       checkNewBadges().then(function (B) { var n = B.filter(function (b) { return b.got; }).length; if ($('kidBadgeN')) $('kidBadgeN').textContent = n + ' badge' + (n === 1 ? '' : 's') + ' so far!'; }).catch(noop);
       loadHomeWanted().then(function (w) { var n = w.filter(function (x) { return kidSafe(x); }).length; if ($('kidHuntN')) $('kidHuntN').textContent = n + ' to find!'; });
       loadRewards().then(function (r) { if ($('kidPtsN') && r) $('kidPtsN').textContent = r.balance + ' points \u00B7 ' + r.level.name; }).catch(noop);
+      recordBadgeVisit();
       maybeShowLetter();
       bindFunSwipe();
     }).catch(oops);
@@ -1203,8 +1222,16 @@
       if (!it || !kidSafe(it)) { go('kidStuff', {}, true); return; }
       S.current = it;
       var t = it.folderId ? S.thumbs[it.folderId] : null;
-      var hero = t ? '<img alt="" src="' + t + '">' : (it.folderId ? thumbInner(it.folderId) : noPhotoHtml(false));
-      var h = backBtn() + '<div class="card center kidItem"><div class="khero" id="kHero"' + (it.folderId ? ' data-fid="' + esc(it.folderId) + '"' : '') + '>' + hero + '</div>' +
+      var heroWrap;
+      if (it.folderId) {
+        var hero = t ? '<img alt="" src="' + t + '">' : thumbInner(it.folderId);
+        heroWrap = '<div class="khero" id="kHero" data-fid="' + esc(it.folderId) + '">' + hero + '</div>';
+      } else if (standinUrl(it)) {
+        heroWrap = standinBlock(it, 'khero', ' id="kHero"');
+      } else {
+        heroWrap = '<div class="khero" id="kHero">' + noPhotoHtml(false) + '</div>';
+      }
+      var h = backBtn() + '<div class="card center kidItem">' + heroWrap +
         '<h1>' + esc(it.name) + '</h1><div class="chips" style="justify-content:center">' + [it.range, it.character, it.year].filter(function (x) { return x && !/^unknown$/i.test(x); }).map(function (x) { return '<span class="chip on">' + esc(x) + '</span>'; }).join('') + '</div>' +
         '<div class="stack" style="margin-top:14px"><button class="btn main full kbtn" data-act="kidSnap">\uD83D\uDCF7 Add a photo</button>' +
         (it.status === 'Wanted' || it.status === 'On order' ? '<button class="btn green full kbtn" data-act="kidGotItem">\uD83C\uDF89 We got it!</button>' : '<div class="pill green" style="font-size:18px;padding:6px 14px">\u2705 We\u2019ve got this!</div>') +
@@ -1272,6 +1299,7 @@
     var wasOpen = !el.hidden;
     el.hidden = false;
     dressOverlay(el);
+    bumpKid('kidDadReads');
     layerOpen(wasOpen);
     try { var b = el.querySelector('.letterGo'); if (b) b.focus(); } catch (e) { /* ignore */ }
   }
@@ -1528,6 +1556,7 @@
     el.hidden = false;
     dressOverlay(el);
     setupNoteButton();
+    bumpKid('kidDadReads');
     layerOpen(wasOpen);
     if (!fromList) markNoteSeen(i);
     try { var b = el.querySelector('[data-act="noteGo"]'); if (b) b.focus(); } catch (e) { /* ignore */ }
@@ -1793,6 +1822,7 @@
     var i = nextJokeIndex(cur);
     LS.set('kidJoke', String(i));
     markJokeSeen(i);
+    bumpKid('kidJokes');
     var el = $('kidJoke'); if (!el) return;
     var j = JOKES[i];
     var q = el.querySelector('.jokeQ'), a = el.querySelector('.jokeA');
@@ -2400,6 +2430,7 @@
     dir = dir || 1;
     if (FUN_ANIM.busy) return;
     setFunUnitIndex(funUnitIndex() + dir, dir);
+    bumpKid('kidWorthSwipes');
   }
   function bindFunSwipe() {
     var root = document.getElementById('funWorth');
@@ -3172,8 +3203,10 @@ SCREENS.who = function () {
       var plats = (it.platforms || []).map(function (pl) {
         return '<button class="chip' + (pl.yes ? ' on' : '') + '" data-act="togglePosted" data-p="' + esc(pl.key) + '" aria-pressed="' + (pl.yes ? 'true' : 'false') + '">' + esc(pl.icon + ' ' + pl.label) + (pl.yes ? ' \u2713' : '') + '</button>';
       }).join('');
+      var standSrc = standinUrl(it);
+      var heroInner = it.folderId ? '\u23F3' : (standSrc ? '<img class="standinImg" alt="" src="' + esc(standSrc) + '">' + filmBadgeHtml() : '<span style="font-size:44px">\uD83D\uDCF7</span>');
       var h = backBtn() + '<h1>' + esc(it.name) + '</h1>' +
-        '<div id="hero" class="hero" data-act="heroOpen">' + (it.folderId ? '\u23F3' : '<span style="font-size:44px">\uD83D\uDCF7</span>') + '</div>' +
+        '<div id="hero" class="hero' + (standSrc ? ' isStandin' : '') + '" data-act="heroOpen">' + heroInner + '</div>' +
         '<div id="nudge"></div>' +
         '<div class="stack" style="margin:12px 0"><button class="btn main full" data-act="snapCurrent">\uD83D\uDCF7 Take photo</button>' +
         '<div class="row"><button class="btn" style="flex:1" data-act="pickCurrent">\uD83D\uDDBC\uFE0F From gallery</button><button class="btn" style="flex:1" data-act="videoCurrent">\uD83C\uDFA5 Record video</button></div>' +
@@ -3183,11 +3216,16 @@ SCREENS.who = function () {
         (it.folderId ? '<a class="btn" style="flex:1" href="https://drive.google.com/drive/folders/' + esc(it.folderId) + '" target="_blank" rel="noopener">\uD83D\uDCC1 Folder \u2197</a>' : '') + '</div>' +
         (shareable(it) || isPriv() ? '<div class="row">' + (shareable(it) ? '<button class="btn pink" style="flex:1" data-act="shareFind">\uD83D\uDCE4 Share this find</button>' : '') + (isPriv() ? '<button class="btn" style="flex:1" data-act="priceCheck">\uD83D\uDD0E Price check</button>' : '') + '</div><div id="priceSlot"></div>' : '') +
         (it.status === 'Wanted' || it.status === 'On order' ? '<button class="btn green full" data-act="gotItem">\u2705 Got it!</button>' : '') + '</div>' +
-        '<h2>Photos</h2><div id="gallery" class="gallery"><div class="hint">' + (it.folderId ? 'Loading photos\u2026' : 'No photos yet.') + '</div></div>' +
+        '<h2>Photos</h2><div id="gallery" class="gallery"><div class="hint">' + (it.folderId ? 'Loading photos\u2026' : (standSrc ? 'Reference picture \u2014 still to film.' : 'No photos yet.')) + '</div></div>' +
         (plats ? '<div class="card skyL"><h3>\uD83D\uDCE3 Posted on</h3><div class="chips">' + plats + '</div><p class="hint">Tap one to tick it off when it\u2019s been posted.</p></div>' : '') +
         '<div class="card"><dl class="facts">' + facts.map(function (f) { return '<dt>' + esc(f[0]) + '</dt><dd>' + esc(f[1]) + '</dd>'; }).join('') + '</dl></div>';
       setMain(h);
-      if (!it.folderId) { $('nudge').innerHTML = '<div class="nudge">\uD83D\uDCF7 No photos yet - tap \u201CAdd photo / video\u201D and I\u2019ll make its folder too.</div>'; return; }
+      if (!it.folderId) {
+        $('nudge').innerHTML = standSrc
+          ? '<div class="nudge">This is a reference picture, not our photo. Tap \u201CTake photo\u201D when you film it and I\u2019ll make its folder too.</div>'
+          : '<div class="nudge">\uD83D\uDCF7 No photos yet - tap \u201CTake photo\u201D and I\u2019ll make its folder too.</div>';
+        return;
+      }
       call('getItemPhotos', it.folderId).then(function (ph) {
         if (!$('hero') || !$('gallery')) return;   // moved on to another screen already
         S.gallery = ph;
@@ -3376,6 +3414,24 @@ SCREENS.who = function () {
 
 
   var WANT_EGGS = ['\uD83D\uDC15', '\uD83C\uDF69', '\uD83D\uDC1F', '\uD83D\uDC7D', '\uD83C\uDF34', '\uD83D\uDCFA', '\uD83D\uDC7E'];
+  var WANT_PEEK_ROT = ['homer-wave.webp', 'bart-wave.webp', 'lisa.webp', 'marge.webp', 'maggie.webp', 'family.webp', 'homer-peek.webp', 'bart-head.webp', 'homer-donut.webp'];
+  function wantArt(cat, series, idx) {
+    var s = (String(cat || '') + ' ' + String(series || '')).toLowerCase();
+    var art = { bg: 'sky.webp', peek: WANT_PEEK_ROT[idx % WANT_PEEK_ROT.length] };
+    if (/helper|santa.?s little|snowball/.test(s)) art.peek = 'helper.webp';
+    else if (/pez/.test(s)) art.peek = 'homer-donut.webp';
+    else if (/funko/.test(s)) art.peek = 'bart-wave.webp';
+    else if (/springfield|world of springfield|\bwos\b/.test(s)) { art.bg = 'springfield.webp'; art.peek = 'homer-wave.webp'; }
+    else if (/jakks/.test(s)) art.peek = 'family.webp';
+    else if (/super\s*7|super7/.test(s)) art.peek = 'burns.webp';
+    else if (/lego/.test(s)) art.peek = 'lisa.webp';
+    else if (/coalport/.test(s)) art.peek = 'marge.webp';
+    else if (/donut|duff|moe/.test(s)) { art.peek = 'homer-donut.webp'; art.bg = 'kwikemart.webp'; }
+    else if (/plush/.test(s)) art.peek = 'maggie.webp';
+    else if (/kwik/.test(s)) { art.bg = 'kwikemart.webp'; }
+    else if (idx % 5 === 3) art.bg = 'kwikemart.webp';
+    return art;
+  }
   var WAVE_WORDS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15 };
   function waveNum(s) {
     var m = String(s || '').match(/(?:wave|series|season)\s+([0-9]+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen)/i);
@@ -3435,10 +3491,15 @@ SCREENS.who = function () {
     if (on) o[id] = 1; else delete o[id];
     LS.set('wantCollapsed', JSON.stringify(o));
   }
-  function wantedDivider(n) {
-    var bits = [];
-    for (var i = 0; i < WANT_EGGS.length; i++) bits.push(WANT_EGGS[(i + n) % WANT_EGGS.length]);
-    return '<div class="wantDiv" aria-hidden="true">' + bits.join(' ') + '</div>';
+  function wantedDivider(n) { return ''; }
+  function wantBannerHtml(g, gi, closed) {
+    var art = wantArt(g.cat, g.series, gi);
+    return '<button type="button" class="wantHead wantBanner" data-act="wantToggle" data-gid="' + esc(g.id) + '" aria-expanded="' + (closed ? 'false' : 'true') + '">' +
+      '<span class="wantBannerBg" aria-hidden="true" style="background-image:url(\x27assets/simpsons/' + art.bg + '\x27)"></span>' +
+      '<img class="wantPeek" src="assets/simpsons/' + art.peek + '" alt="" aria-hidden="true">' +
+      '<span class="wantBannerText"><span class="wantChev">' + (closed ? '\u25B8' : '\u25BE') + '</span>' +
+      '<span class="wantTitle">' + esc(g.title) + '</span>' +
+      '<span class="wantN">(' + g.items.length + ')</span></span></button>';
   }
   function wantedSearchHay(w) {
     return norm([w.name, w.range, w.series, w.conditionWanted].filter(Boolean).join(' '));
@@ -3468,10 +3529,7 @@ SCREENS.who = function () {
     groups.forEach(function (g, gi) {
       var closed = !!col[g.id];
       h += '<div class="wantGroup' + (closed ? ' is-collapsed' : '') + '" data-gid="' + esc(g.id) + '">';
-      if (gi) h += wantedDivider(gi);
-      h += '<button type="button" class="wantHead" data-act="wantToggle" data-gid="' + esc(g.id) + '" aria-expanded="' + (closed ? 'false' : 'true') + '">' +
-        '<span class="wantChev">' + (closed ? '\u25B8' : '\u25BE') + '</span> ' +
-        esc(g.title) + ' <span class="wantN">(' + g.items.length + ')</span></button>';
+      h += wantBannerHtml(g, gi, closed);
       h += '<div class="wantItems">';
       g.items.forEach(function (it) { h += wantedItemHtml(it.w, it.i, kid); });
       h += '</div></div>';
@@ -3743,6 +3801,7 @@ SCREENS.who = function () {
     ];
     if (isPriv()) {
       tiles.push(['rewards', '\u2B50', KID_ROLE + '\u2019s rewards', 'Points, photo approvals, activity log']);
+      tiles.push(['badgeEdit', '\uD83C\uDFC6', KID_ROLE + '\u2019s badges', 'Add badges, change tiers, mark earned']);
       tiles.push(['value', '\uD83D\uDCB7', 'Value', 'Private: totals, top 10, paid vs value']);
     }
     tiles.push(['export', '\uD83D\uDCE4', 'Export', 'Save a list as a spreadsheet file or PDF'],
@@ -4136,49 +4195,145 @@ SCREENS.who = function () {
   function catIcon(r) { for (var i = 0; i < CAT_ICONS.length; i++) if (CAT_ICONS[i][0].test(r)) return CAT_ICONS[i][1]; return '\u2B50'; }
   function kidCount(k) { return +LS.get(k) || 0; }
   function bumpKid(k, n) { LS.set(k, String(kidCount(k) + (n || 1))); }
-  function computeBadges(hist) {
-    var items = kidItems(), B = [];
-    var add = function (id, icon, name, desc, have, need) { B.push({ id: id, icon: icon, name: name, desc: desc, have: Math.min(have, need), need: need, got: have >= need }); };
-    var ladder = function (idp, icon, label, desc, have, tiers) {
-      tiers.forEach(function (t, i) { var tn = Array.isArray(t) ? t : [t, label + ' ' + (i + 1)]; add(idp + tn[0], icon, tn[1], desc.replace('{n}', tn[0]), have, tn[0]); });
+  var BADGE_TIER_ORDER = ['bronze', 'silver', 'gold', 'platinum', 'diamond', 'elite', 'champion', 'unreal'];
+  var BADGE_TIER_NAME = { bronze: 'Bronze', silver: 'Silver', gold: 'Gold', platinum: 'Platinum', diamond: 'Diamond', elite: 'Elite', champion: 'Champion', unreal: 'Unreal' };
+  var BADGE_CATALOG = [
+    { id: 'drop-in', tier: 'bronze', emoji: '\uD83C\uDF91', name: 'First Drop-In', goal: 'Open Son\u2019s mode for the first time.', rule: { type: 'starter' } },
+    { id: 'wee-welcome', tier: 'bronze', emoji: '\uD83D\uDC4B', name: 'Wee Welcome', goal: 'Say hi on the home screen.', rule: { type: 'starter' } },
+    { id: 'snap-happy', tier: 'bronze', emoji: '\uD83D\uDCF8', name: 'Snap Happy', goal: 'Add 1 photo in Son\u2019s mode.', rule: { type: 'photos', n: 1 } },
+    { id: 'first-find', tier: 'bronze', emoji: '\uD83D\uDD0D', name: 'First Find!', goal: 'Tick 1 item off the hunt list.', rule: { type: 'found', n: 1 } },
+    { id: 'ten-pointer', tier: 'bronze', emoji: '\u2B50', name: 'Ten Pointer', goal: 'Earn 10 points.', rule: { type: 'points', n: 10 } },
+    { id: 'back-again', tier: 'bronze', emoji: '\uD83D\uDC5F', name: 'Back Again', goal: 'Visit on 2 different days.', rule: { type: 'visits', n: 2 } },
+    { id: 'new-shelf', tier: 'bronze', emoji: '\uD83D\uDCE6', name: 'New On The Shelf', goal: 'Add 1 new item to the collection.', rule: { type: 'items', n: 1 } },
+    { id: 'joke-machine', tier: 'bronze', emoji: '\uD83D\uDE02', name: 'Joke Machine', goal: 'Tap the joke card 3 times.', rule: { type: 'jokes', n: 3 } },
+    { id: 'worth-swipe', tier: 'bronze', emoji: '\uD83C\uDF69', name: 'Worth a Swipe', goal: 'Swipe or tap the worth card.', rule: { type: 'swipes', n: 1 } },
+    { id: 'dad-note', tier: 'bronze', emoji: '\uD83D\uDCDD', name: 'Note From Dad', goal: 'Open a note or the letter from Dad.', rule: { type: 'reads', n: 1 } },
+    { id: 'got-it-search', tier: 'bronze', emoji: '\uD83D\uDD0E', name: 'Have We Got It?', goal: 'Search for something on the home screen.', rule: { type: 'searches', n: 1 } },
+    { id: 'box-scanner', tier: 'bronze', emoji: '\uD83D\uDCF7', name: 'Box Scanner', goal: 'Scan a box.', rule: { type: 'scans', n: 1 } },
+    { id: 'camera-kid', tier: 'silver', emoji: '\uD83D\uDCF7', name: 'Camera Kid', goal: 'Add 5 photos in Son\u2019s mode.', rule: { type: 'photos', n: 5 } },
+    { id: 'super-sleuth', tier: 'silver', emoji: '\uD83D\uDD75\uFE0F', name: 'Super Sleuth', goal: 'Tick 5 items off the hunt list.', rule: { type: 'found', n: 5 } },
+    { id: 'fifty-pointer', tier: 'silver', emoji: '\uD83C\uDF1F', name: 'Fifty Pointer', goal: 'Earn 50 points.', rule: { type: 'points', n: 50 } },
+    { id: 'week-visitor', tier: 'silver', emoji: '\uD83D\uDCC5', name: 'Week Visitor', goal: 'Visit on 5 different days.', rule: { type: 'visits', n: 5 } },
+    { id: 'five-finds', tier: 'silver', emoji: '\uD83C\uDF81', name: 'Five New Finds', goal: 'Add 5 new items to the collection.', rule: { type: 'items', n: 5 } },
+    { id: 'hunt-pair', tier: 'silver', emoji: '\uD83D\uDD2D', name: 'Hunt Pair', goal: 'Tick 2 items off the hunt list.', rule: { type: 'found', n: 2 } },
+    { id: 'point-stash', tier: 'silver', emoji: '\uD83C\uDFC5', name: 'Point Stash', goal: 'Earn 25 points.', rule: { type: 'points', n: 25 } },
+    { id: 'picture-day', tier: 'silver', emoji: '\uD83D\uDDBC\uFE0F', name: 'Picture Day', goal: 'Add 3 photos in Son\u2019s mode.', rule: { type: 'photos', n: 3 } },
+    { id: 'joke-book', tier: 'silver', emoji: '\uD83D\uDCD6', name: 'Joke Book', goal: 'Tap the joke card 10 times.', rule: { type: 'jokes', n: 10 } },
+    { id: 'fresh-cats', tier: 'silver', emoji: '\uD83D\uDDC2\uFE0F', name: 'Fresh Categories', goal: 'Add items in 2 new categories.', rule: { type: 'cats', n: 2 } },
+    { id: 'camera-ace', tier: 'gold', emoji: '\uD83C\uDFAF', name: 'Camera Ace', goal: 'Add 10 photos in Son\u2019s mode.', rule: { type: 'photos', n: 10 } },
+    { id: 'master-hunter', tier: 'gold', emoji: '\uD83C\uDFAF', name: 'Master Hunter', goal: 'Tick 10 items off the hunt list.', rule: { type: 'found', n: 10 } },
+    { id: 'century-club', tier: 'gold', emoji: '\uD83C\uDFC6', name: 'Century Club', goal: 'Earn 100 points.', rule: { type: 'points', n: 100 } },
+    { id: 'fortnight-fun', tier: 'gold', emoji: '\uD83C\uDFC3', name: 'Fortnight of Fun', goal: 'Visit on 10 different days.', rule: { type: 'visits', n: 10 } },
+    { id: 'ten-treasures', tier: 'gold', emoji: '\uD83D\uDC8E', name: 'Ten Treasures', goal: 'Add 10 new items to the collection.', rule: { type: 'items', n: 10 } },
+    { id: 'category-captain', tier: 'gold', emoji: '\uD83E\uDDED', name: 'Category Captain', goal: 'Add items in 3 new categories.', rule: { type: 'cats', n: 3 } },
+    { id: 'seven-day', tier: 'gold', emoji: '\u2B50', name: 'Seven Day Hero', goal: 'Visit on 7 different days.', rule: { type: 'visits', n: 7 } },
+    { id: 'shelf-star', tier: 'gold', emoji: '\uD83C\uDF1F', name: 'Shelf Star', goal: 'Add 15 new items to the collection.', rule: { type: 'items', n: 15 } },
+    { id: 'photo-pro', tier: 'platinum', emoji: '\uD83D\uDCF8', name: 'Photo Pro', goal: 'Add 20 photos in Son\u2019s mode.', rule: { type: 'photos', n: 20 } },
+    { id: 'hunt-legend', tier: 'platinum', emoji: '\uD83C\uDFC6', name: 'Hunt Legend', goal: 'Tick 20 items off the hunt list.', rule: { type: 'found', n: 20 } },
+    { id: 'club-250', tier: 'platinum', emoji: '\uD83D\uDC8E', name: '250 Club', goal: 'Earn 250 points.', rule: { type: 'points', n: 250 } },
+    { id: 'monthly-regular', tier: 'platinum', emoji: '\uD83D\uDCC5', name: 'Monthly Regular', goal: 'Visit on 20 different days.', rule: { type: 'visits', n: 20 } },
+    { id: 'haul-hero', tier: 'platinum', emoji: '\uD83D\uDCE6', name: 'Haul Hero', goal: 'Add 25 new items to the collection.', rule: { type: 'items', n: 25 } },
+    { id: 'range-master', tier: 'platinum', emoji: '\uD83C\uDFAF', name: 'Range Master', goal: 'Add items in 5 new categories.', rule: { type: 'cats', n: 5 } },
+    { id: 'diamond-lens', tier: 'diamond', emoji: '\uD83D\uDC8E', name: 'Diamond Lens', goal: 'Add 40 photos in Son\u2019s mode.', rule: { type: 'photos', n: 40 } },
+    { id: 'diamond-hunter', tier: 'diamond', emoji: '\uD83D\uDD0D', name: 'Diamond Hunter', goal: 'Tick 35 items off the hunt list.', rule: { type: 'found', n: 35 } },
+    { id: 'diamond-points', tier: 'diamond', emoji: '\u2B50', name: 'Diamond Points', goal: 'Earn 500 points.', rule: { type: 'points', n: 500 } },
+    { id: 'everyday-explorer', tier: 'diamond', emoji: '\uD83E\uDDED', name: 'Everyday Explorer', goal: 'Visit on 30 different days.', rule: { type: 'visits', n: 30 } },
+    { id: 'mega-haul', tier: 'diamond', emoji: '\uD83C\uDFDB\uFE0F', name: 'Mega Haul', goal: 'Add 50 new items to the collection.', rule: { type: 'items', n: 50 } },
+    { id: 'elite-camera', tier: 'elite', emoji: '\uD83D\uDCF7', name: 'Elite Camera', goal: 'Add 75 photos in Son\u2019s mode.', rule: { type: 'photos', n: 75 } },
+    { id: 'elite-hunter', tier: 'elite', emoji: '\uD83C\uDFAF', name: 'Elite Hunter', goal: 'Tick 50 items off the hunt list.', rule: { type: 'found', n: 50 } },
+    { id: 'elite-points', tier: 'elite', emoji: '\uD83C\uDF1F', name: 'Elite Points', goal: 'Earn 800 points.', rule: { type: 'points', n: 800 } },
+    { id: 'elite-shelf', tier: 'elite', emoji: '\uD83D\uDCDC', name: 'Elite Shelf', goal: 'Add 75 new items to the collection.', rule: { type: 'items', n: 75 } },
+    { id: 'champ-shelf', tier: 'champion', emoji: '\uD83C\uDFC6', name: 'Champion of the Shelf', goal: 'Add 100 new items to the collection.', rule: { type: 'items', n: 100 } },
+    { id: 'champ-hunter', tier: 'champion', emoji: '\uD83D\uDD25', name: 'Champion Hunter', goal: 'Tick 80 items off the hunt list.', rule: { type: 'found', n: 80 } },
+    { id: 'champ-points', tier: 'champion', emoji: '\uD83D\uDC51', name: 'Champion Points', goal: 'Earn 1,200 points.', rule: { type: 'points', n: 1200 } },
+    { id: 'unreal-collector', tier: 'unreal', emoji: '\uD83D\uDE80', name: 'Unreal Collector', goal: 'Add 200 new items to the collection.', rule: { type: 'items', n: 200 } },
+    { id: 'unreal-legend', tier: 'unreal', emoji: '\u2728', name: 'Unreal Legend', goal: 'Earn 2,000 points.', rule: { type: 'points', n: 2000 } }
+  ];
+  var BADGE_STARTERS = ['drop-in', 'wee-welcome'];
+
+  function badgeBook() {
+    try {
+      var o = JSON.parse(LS.get('badgeBook') || 'null');
+      if (o && o.v === 1) return o;
+    } catch (e) {}
+    return { v: 1, resetAt: '', baseline: null, earned: {}, override: {}, custom: [], visits: [] };
+  }
+  function saveBadgeBook(b) { LS.set('badgeBook', JSON.stringify(b)); }
+  function badgeCatCount() {
+    var o = {};
+    kidItems().forEach(function (it) {
+      var r = String(it.range || '').trim();
+      if (r && !/^(unknown|other)$/i.test(r)) o[r] = 1;
+    });
+    return Object.keys(o).length;
+  }
+  function currentBadgeStats(rewards) {
+    return {
+      items: kidItems().length,
+      photos: kidCount('kidPhotos'),
+      found: kidCount('kidFound'),
+      points: rewards && rewards.balance != null ? +rewards.balance : 0,
+      jokes: kidCount('kidJokes'),
+      swipes: kidCount('kidWorthSwipes'),
+      scans: kidCount('kidScans'),
+      searches: kidCount('kidSearches'),
+      reads: kidCount('kidDadReads'),
+      cats: badgeCatCount()
     };
-    ladder('size:', '\uD83C\uDFC6', 'Collector', 'Have {n} things in our collection', items.length, [[10, 'Collector Level 1'], [25, 'Collector Level 2'], [50, 'Collector Level 3'], [100, 'Collector Level 4'], [200, 'Collector Level 5'], [300, 'Super Collector'], [400, 'Mega Collector'], [500, 'Ultimate Collector']]);
-    var byCat = {}; items.forEach(function (it) { var r = it.range || 'Other'; if (!/^(unknown|other)$/i.test(r)) byCat[r] = (byCat[r] || 0) + 1; });
-    Object.keys(byCat).sort(function (a, b) { return byCat[b] - byCat[a]; }).forEach(function (r) {
-      CAT_TIERS.forEach(function (t) { if (t[0] <= Math.max(10, byCat[r] * 2)) add('cat:' + r + ':' + t[0], catIcon(r), r + ' ' + t[1], 'Have ' + t[0] + ' ' + r + ' things', byCat[r], t[0]); });
-    });
-    var nCats = Object.keys(byCat).length;
-    ladder('explore:', '\uD83E\uDDED', 'Explorer', 'Collect from {n} different kinds of thing', nCats, [[5, 'Explorer'], [10, 'Adventurer'], [15, 'World Traveller']]);
-    CHARS.forEach(function (c) {
-      var re = new RegExp('\\b' + c[0] + '\\b', 'i'), n = items.filter(function (it) { return re.test(it.character || '') || re.test(it.name || ''); }).length;
-      if (n) [5, 10, 25].forEach(function (t, i) { add('char:' + c[0] + ':' + t, c[2], c[1] + (i ? ' ' + ['', 'II', 'III'][i] : ''), 'Have ' + t + ' ' + c[0] + ' things', n, t); });
-    });
-    var rares = items.filter(function (it) { return RARE_RE.test([it.name, it.series].join(' ')); }).length;
-    add('rare:1', '\uD83D\uDC8E', 'First Rare Find!', 'Get a limited, exclusive, chase or glow-in-the-dark one', rares, 1);
-    add('rare:5', '\uD83D\uDC8E', 'Rare Hunter', 'Have 5 rare ones', rares, 5);
-    add('rare:10', '\uD83D\uDC51', 'Treasure Keeper', 'Have 10 rare ones', rares, 10);
-    var years = items.map(function (it) { var m = String(it.year || '').match(/\b(19|20)\d{2}\b/); return m ? +m[0] : 0; }).filter(Boolean);
-    var oldest = years.length ? Math.min.apply(null, years) : 9999;
-    add('old:1995', '\uD83D\uDCFC', 'Retro Rocker', 'Have something from 1995 or older', oldest <= 1995 ? 1 : 0, 1);
-    add('old:1990', '\u23F3', 'Time Traveller', 'Have something from 1990 or older', oldest <= 1990 ? 1 : 0, 1);
-    var photos = items.filter(function (it) { return it.folderId; }).length;
-    ladder('photo:', '\uD83D\uDCF8', 'Photo', 'Have photos for {n} things', photos, [[25, 'Photo Fan'], [100, 'Photo Pro'], [250, 'Photo Superstar']]);
-    ladder('snap:', '\uD83E\uDD33', 'Snap', 'Add {n} photos in ' + KID_ROLE + '\u2019s mode', kidCount('kidPhotos'), [[1, 'Snap Happy'], [5, 'Camera Kid'], [20, 'Ace Photographer']]);
-    ladder('found:', '\uD83D\uDD75\uFE0F', 'Hunter', 'Tick off {n} finds from the hunt list', kidCount('kidFound'), [[1, 'Found One!'], [5, 'Super Sleuth'], [10, 'Master Hunter']]);
-    var posted = items.filter(function (it) { return it.posted; }).length;
-    ladder('posted:', '\uD83D\uDCE3', 'Social', 'Have {n} things posted online', posted, [[10, 'Social Star'], [50, 'Influencer'], [100, 'Famous!']]);
-    if (hist) {
-      var now = new Date(), y = now.getFullYear(), mo = now.getMonth(), mon = 0, yr = 0;
-      items.forEach(function (it) { var h = hist[it.key]; if (!h) return; var d = parseLoose(h.dg) || parseLoose(h.ph); if (!d) return; if (d.y === y) { yr++; if (d.m === mo && d.p !== 'y') mon++; } });
-      ladder('month:' + y + '-' + mo + ':', '\uD83D\uDD25', 'Month', 'Get {n} new things this month', mon, [[1, 'Fresh Find'], [5, 'Hot Streak'], [10, 'On Fire!']]);
-      ladder('year:' + y + ':', '\uD83D\uDCC5', 'Year', 'Get {n} new things this year', yr, [[25, y + ' Collector'], [100, y + ' Champion']]);
+  }
+  function ensureBadgeBaseline(stats) {
+    var b = badgeBook();
+    if (!b.baseline) {
+      b.resetAt = londonDay();
+      b.baseline = stats;
+      b.earned = b.earned || {};
+      BADGE_STARTERS.forEach(function (id) { b.earned[id] = 1; });
+      b.visits = b.visits || [];
+      var d = londonDay();
+      if (b.visits.indexOf(d) < 0) b.visits.push(d);
+      saveBadgeBook(b);
+      var seen = badgesSeen() || [];
+      BADGE_STARTERS.forEach(function (id) { if (seen.indexOf(id) < 0) seen.push(id); });
+      LS.set('kidBadgesSeen', JSON.stringify(seen));
     }
-    return B;
+    return b;
+  }
+  function recordBadgeVisit() {
+    var b = badgeBook();
+    b.visits = b.visits || [];
+    var d = londonDay();
+    if (b.visits.indexOf(d) < 0) { b.visits.push(d); saveBadgeBook(b); }
+  }
+  function allBadgeDefs() {
+    return BADGE_CATALOG.concat(badgeBook().custom || []);
+  }
+  function computeBadges(hist, rewards) {
+    var stats = currentBadgeStats(rewards);
+    var book = ensureBadgeBaseline(stats);
+    var base = book.baseline || {};
+    return allBadgeDefs().map(function (def) {
+      var typ = (def.rule && def.rule.type) || 'manual';
+      var need = typ === 'starter' ? 1 : Math.max(1, (def.rule && def.rule.n) || 1);
+      var have = 0;
+      if (typ === 'starter') have = 1;
+      else if (typ === 'visits') have = (book.visits || []).length;
+      else if (typ === 'manual') have = (book.earned && book.earned[def.id]) ? need : 0;
+      else have = Math.max(0, (stats[typ] || 0) - (base[typ] || 0));
+      have = Math.min(have, need);
+      var got = have >= need;
+      if (book.override && book.override[def.id] === 0) got = false;
+      else if (book.override && book.override[def.id] === 1) got = true;
+      if (got) have = need;
+      return { id: def.id, icon: def.emoji, name: def.name, desc: def.goal, tier: def.tier || 'bronze', have: have, need: need, got: got, custom: !!def.custom };
+    });
   }
   function badgesSeen() { try { return JSON.parse(LS.get('kidBadgesSeen') || 'null'); } catch (e) { return null; } }
   function checkNewBadges() {
-    return loadHistory().catch(function () { return null; }).then(function (hist) {
-      var B = computeBadges(hist), got = B.filter(function (b) { return b.got; }), seen = badgesSeen(), first = !seen;
+    return Promise.all([
+      loadHistory().catch(function () { return null; }),
+      loadRewards().catch(function () { return null; })
+    ]).then(function (res) {
+      var B = computeBadges(res[0], res[1]), got = B.filter(function (b) { return b.got; }), seen = badgesSeen(), first = !seen;
       seen = seen || [];
       var fresh = got.filter(function (b) { return seen.indexOf(b.id) < 0; });
       S.badges = B;
@@ -4191,24 +4346,108 @@ SCREENS.who = function () {
       return B;
     });
   }
+  function badgeTile(b) {
+    return '<div class="badge tier-' + esc(b.tier || 'bronze') + (b.got ? ' got' : '') + '"><span class="bTier">' + esc(BADGE_TIER_NAME[b.tier] || b.tier) + '</span><span class="bIc">' + b.icon + '</span><b>' + esc(b.name) + '</b><small>' + esc(b.desc) + '</small>' +
+      (b.got ? '<em>\u2705 Got it!</em>' : '<span class="bBar"><i style="width:' + Math.round(100 * b.have / b.need) + '%"></i></span><em>' + b.have + ' / ' + b.need + '</em>') + '</div>';
+  }
   SCREENS.kidBadges = function () {
     busy('Polishing your badges\u2026');
+    recordBadgeVisit();
     loadBoot().then(checkNewBadges).then(function (B) {
       done();
-      var got = B.filter(function (b) { return b.got; });
-      var grp = function (b) { return b.id.replace(/:[^:]*$/, ''); }, rank = {}, cnt = {};
-      got.slice().reverse().forEach(function (b) { var g = grp(b); cnt[g] = (cnt[g] || 0); rank[b.id] = cnt[g]++; });   // best badge of each kind first
-      got = got.map(function (b, i) { return { b: b, i: i }; }).sort(function (x, y) { return rank[x.b.id] - rank[y.b.id] || x.i - y.i; }).map(function (x) { return x.b; });
-      var next = B.filter(function (b) { return !b.got; }).sort(function (a, b) { return (b.have / b.need) - (a.have / a.need); });
-      var tile = function (b) {
-        return '<div class="badge' + (b.got ? ' got' : '') + '" title="' + esc(b.desc) + '"><span class="bIc">' + b.icon + '</span><b>' + esc(b.name) + '</b><small>' + esc(b.desc) + '</small>' +
-          (b.got ? '<em>\u2705 Got it!</em>' : '<span class="bBar"><i style="width:' + Math.round(100 * b.have / b.need) + '%"></i></span><em>' + b.have + ' / ' + b.need + '</em>') + '</div>';
-      };
-      setMain('<h1>\uD83C\uDFC6 My badges</h1><div class="card yel center"><b style="font-size:26px">' + got.length + '</b> badge' + (got.length === 1 ? '' : 's') + ' so far! <br><small>Collect more stuff, add photos and tick off the hunt list to get more.</small></div>' +
-        '<h2>\u2B50 Got them</h2><div class="badgeWall">' + (got.length ? got.map(tile).join('') : '<p class="hint">None yet - add something!</p>') + '</div>' +
-        '<h2>\uD83D\uDD12 Up next</h2><div class="badgeWall">' + next.slice(0, 24).map(tile).join('') + '</div>');
+      var gotN = B.filter(function (b) { return b.got; }).length;
+      var h = '<h1>\uD83C\uDFC6 My badges</h1><div class="card yel center badgeSum"><b style="font-size:26px">' + gotN + ' / ' + B.length + '</b> badges<br><small>' + (B.length - gotN) + ' still to get \u2014 keep collecting, snapping and hunting!</small></div>';
+      BADGE_TIER_ORDER.forEach(function (tier) {
+        var rows = B.filter(function (b) { return b.tier === tier; });
+        if (!rows.length) return;
+        var g = rows.filter(function (b) { return b.got; }).length;
+        h += '<h2 class="badgeTier"><span class="tPip ' + tier + '"></span>' + esc(BADGE_TIER_NAME[tier]) + ' <span class="wantN">(' + g + '/' + rows.length + ')</span></h2>';
+        h += '<div class="badgeWall">' + rows.map(badgeTile).join('') + '</div>';
+      });
+      setMain(h);
     }).catch(oops);
   };
+  function badgeTierOptions(cur) {
+    return BADGE_TIER_ORDER.map(function (t) {
+      return '<option value="' + t + '"' + (t === cur ? ' selected' : '') + '>' + BADGE_TIER_NAME[t] + '</option>';
+    }).join('');
+  }
+  function badgeEditorRow(def, earned) {
+    var custom = !!def.custom;
+    return '<div class="rwItem bdgRow" data-id="' + esc(def.id) + '" data-custom="' + (custom ? '1' : '0') + '">' +
+      (custom ? '<p class="rwEditHead">Custom badge</p>' : '<p class="rwEditHead">' + esc(BADGE_TIER_NAME[def.tier] || def.tier) + '</p>') +
+      '<label class="field">Emoji <input type="text" class="bdgEmoji" maxlength="8" value="' + esc(def.emoji || '') + '"></label>' +
+      '<label class="field">Name <input type="text" class="bdgName" maxlength="40" value="' + esc(def.name || '') + '"></label>' +
+      '<label class="field">Tier <select class="bdgTier">' + badgeTierOptions(def.tier || 'bronze') + '</select></label>' +
+      '<label class="field">Goal <input type="text" class="bdgGoal" maxlength="120" value="' + esc(def.goal || '') + '"></label>' +
+      '<label class="rwOnRow"><input type="checkbox" class="bdgOn"' + (earned ? ' checked' : '') + '> Earned</label>' +
+      (custom ? '<p><button type="button" class="btn small" data-act="bdgRemove" data-id="' + esc(def.id) + '">Remove</button></p>' : '') +
+      '</div>';
+  }
+  SCREENS.badgeEdit = function () {
+    if (!isPriv()) { go('home', {}, true); return; }
+    busy('Loading badges\u2026');
+    Promise.all([loadBoot().catch(function () { return null; }), loadRewards().catch(function () { return null; })]).then(function (res) {
+      done();
+      var B = computeBadges(res[0], res[1]);
+      var got = {};
+      B.forEach(function (b) { got[b.id] = b.got; });
+      var rows = allBadgeDefs().map(function (d) { return badgeEditorRow(d, !!got[d.id]); }).join('');
+      setMain(backBtn() + '<h1>\uD83C\uDFC6 ' + esc(KID_ROLE) + '\u2019s badges</h1>' +
+        '<p class="hint">There are 50 ready-made badges, with two easy Bronze ones already earned. Add more any time. Changes save on this phone.</p>' +
+        '<div class="rwList bdgEdit" id="bdgEdit">' + rows + '</div>' +
+        '<p><button type="button" class="rwAdd" data-act="bdgAdd">+ Add badge</button></p>' +
+        '<p class="center"><button class="btn main" data-act="bdgSave" id="bdgSaveBtn">Save</button></p>');
+    }).catch(oops);
+  };
+  function addBadgeRow() {
+    var box = $('bdgEdit'); if (!box) return;
+    var id = 'custom-' + Date.now();
+    var el = document.createElement('div');
+    el.innerHTML = badgeEditorRow({ id: id, custom: true, emoji: '\uD83C\uDFC6', name: '', tier: 'bronze', goal: '', rule: { type: 'manual' } }, false);
+    box.appendChild(el.firstChild);
+    var btn = $('bdgSaveBtn'); if (btn) { btn.textContent = 'Save'; btn.classList.remove('saved'); }
+  }
+  function saveBadgesUI() {
+    var book = badgeBook();
+    if (!book.baseline) book = ensureBadgeBaseline(currentBadgeStats(null));
+    book.override = book.override || {};
+    book.earned = book.earned || {};
+    var custom = [], bad = '';
+    document.querySelectorAll('#bdgEdit .bdgRow').forEach(function (el) {
+      var id = el.getAttribute('data-id') || '';
+      var name = ((el.querySelector('.bdgName') || {}).value || '').replace(/\s+/g, ' ').trim();
+      var emoji = ((el.querySelector('.bdgEmoji') || {}).value || '').trim() || '\uD83C\uDFC6';
+      var tier = ((el.querySelector('.bdgTier') || {}).value || 'bronze');
+      if (BADGE_TIER_ORDER.indexOf(tier) < 0) tier = 'bronze';
+      var goal = ((el.querySelector('.bdgGoal') || {}).value || '').replace(/\s+/g, ' ').trim();
+      var on = !!(el.querySelector('.bdgOn') && el.querySelector('.bdgOn').checked);
+      var isCustom = el.getAttribute('data-custom') === '1';
+      if (isCustom && !name) { bad = 'Give each new badge a name.'; return; }
+      if (isCustom) custom.push({ id: id, custom: true, emoji: emoji, name: name, tier: tier, goal: goal || 'Dad added this one.', rule: { type: 'manual' } });
+      else {
+        var def = null;
+        BADGE_CATALOG.forEach(function (d) { if (d.id === id) def = d; });
+        if (def) { def._tmp = 1; }
+        book.override[id] = on ? 1 : 0;
+        if (on) book.earned[id] = 1; else delete book.earned[id];
+      }
+      if (isCustom) {
+        book.override[id] = on ? 1 : 0;
+        if (on) book.earned[id] = 1; else delete book.earned[id];
+      }
+    });
+    if (bad) { toast(bad, 'oops'); return; }
+    book.custom = custom;
+    saveBadgeBook(book);
+    var seen = badgesSeen() || [];
+    Object.keys(book.earned).forEach(function (id) { if (book.earned[id] && seen.indexOf(id) < 0) seen.push(id); });
+    LS.set('kidBadgesSeen', JSON.stringify(seen));
+    var btn = $('bdgSaveBtn');
+    if (btn) { btn.textContent = 'Saved \u2713'; btn.classList.add('saved'); }
+    toast('Saved \u2713', 'good');
+  }
+
   function confetti() {
     try { if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return; } catch (e) { /* ignore */ }
     var c = document.createElement('canvas'), dpr = Math.min(2, window.devicePixelRatio || 1), W = innerWidth, H = innerHeight;
@@ -4382,7 +4621,7 @@ SCREENS.who = function () {
       case 'startTour': LS.set('tourPending', '1'); go('home', {}, true); break;
       case 'tourNext': startTour(+el.getAttribute('data-i')); break;
       case 'tourSkip': if (NAV.pushed > 0) layerBack(); else closeTour(); toast('No problem - the tour is under More \u2192 Help.'); break;
-      case 'scan': openScanner({}); break;
+      case 'scan': bumpKid('kidScans'); openScanner({}); break;
       case 'scanAssign': openScanner({ assign: { key: S.current.key, name: S.current.name } }); break;
       case 'scanClose': if (NAV.pushed > 0) layerBack(); else stopScanner(); break;
       case 'scanType': typeCode(); break;
@@ -4413,6 +4652,9 @@ SCREENS.who = function () {
       case 'rwPhotoNo': decidePhotoUI(el.getAttribute('data-id'), false, false); break;
       case 'rwSave': saveRewardsUI(); break;
       case 'rwAdd': addRewardRow(); break;
+      case 'bdgAdd': addBadgeRow(); break;
+      case 'bdgSave': saveBadgesUI(); break;
+      case 'bdgRemove': (function () { var row = el.closest && el.closest('.bdgRow'); if (row && row.parentNode) row.parentNode.removeChild(row); var btn = $('bdgSaveBtn'); if (btn) { btn.textContent = 'Save'; btn.classList.remove('saved'); } })(); break;
       case 'addScan': keepAddName(); openScanner({ add: true }); break;
       case 'addTypeBc': keepAddName(); SCAN.opts = { add: true }; typeCode(); break;
       case 'addClearBc': var A0 = addState(); A0.barcode = ''; A0.bcLook = undefined; A0.bcRef = ''; go('add', {}, true); break;

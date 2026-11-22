@@ -358,6 +358,7 @@
     overflow-x: hidden; overflow-y: auto; -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
   }
+  .letterInner p { padding-right: 36px; }
   .noteInner #noteBody {
     font-family: Georgia, "Iowan Old Style", "Palatino Linotype", Palatino, serif;
     font-size: 22px; line-height: 1.45; text-align: center; margin: 8px 0 12px;
@@ -604,6 +605,195 @@
   .kfeature.yel { background: var(--yel); }
   .kfeature.pinkL { background: var(--pinkL); }
 
+
+  .badgeSum { margin-bottom: 14px; }
+  .badgeTier { margin: 16px 0 10px; font-size: 18px; font-weight: 900; display: flex; align-items: center; gap: 8px; }
+  .badgeTier .tPip { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--ink); display: inline-block; }
+  .badgeWall { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .badge { background: #d8dee6; border: 3px solid #9aa7b8; border-radius: 18px; padding: 12px 8px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 2px; color: #5b6778; filter: grayscale(.85); opacity: .78; }
+  .badge .bIc { font-size: 36px; filter: grayscale(1); opacity: .55; }
+  .badge b { font-size: 15px; line-height: 1.15; } .badge small { font-size: 12px; line-height: 1.25; } .badge em { font-style: normal; font-weight: 900; font-size: 12px; }
+  .badge .bTier { font-size: 10px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; opacity: .8; }
+  .bBar { width: 80%; height: 8px; background: #c5cbd3; border-radius: 4px; overflow: hidden; margin-top: 4px; } .bBar i { display: block; height: 100%; background: #8b93a0; }
+  .badge.got { filter: none; opacity: 1; color: var(--ink); border: 3px solid var(--ink); box-shadow: 0 4px 0 var(--ink); }
+  .badge.got .bIc { filter: none; opacity: 1; animation: bPop .5s ease-out; }
+  .badge.got .bBar i { background: var(--green); }
+  .badge.tier-bronze.got { background: linear-gradient(180deg, #F3D0A4, #D08A3A); box-shadow: 0 4px 0 #8A4B12, 0 0 16px rgba(208,138,58,.55); }
+  .badge.tier-silver.got { background: linear-gradient(180deg, #F4F7FB, #B8C2CE); box-shadow: 0 4px 0 #6A7684, 0 0 16px rgba(200,210,220,.7); }
+  .badge.tier-gold.got { background: linear-gradient(180deg, #FFE86A, #F5B400); box-shadow: 0 4px 0 #9A6A00, 0 0 18px rgba(254,217,15,.7); }
+  .badge.tier-platinum.got { background: linear-gradient(180deg, #FFFFFF, #D5E3F0); box-shadow: 0 4px 0 #7A8B9A, 0 0 18px rgba(220,235,255,.8); }
+  .badge.tier-diamond.got { background: linear-gradient(180deg, #D6F6FF, #3EC3F0); box-shadow: 0 4px 0 #0B6E8F, 0 0 20px rgba(62,195,240,.75); }
+  .badge.tier-elite.got { background: linear-gradient(180deg, #E8C8FF, #8A2BE2); color: #1a0a2a; box-shadow: 0 4px 0 #4A157A, 0 0 22px rgba(138,43,226,.7); }
+  .badge.tier-champion.got { background: linear-gradient(180deg, #FF8FAB, #E4572E); box-shadow: 0 4px 0 #8A1F10, 0 0 22px rgba(228,87,46,.75); }
+  .badge.tier-unreal.got { background: linear-gradient(135deg, #7CFFCB, #70CCF5, #C77DFF, #FED90F); box-shadow: 0 4px 0 #13294B, 0 0 26px rgba(199,125,255,.9); animation: unrealGlow 2.4s ease-in-out infinite; }
+  .tPip.bronze { background: #D08A3A; } .tPip.silver { background: #C5CED8; } .tPip.gold { background: #FED90F; }
+  .tPip.platinum { background: #E8EEF5; } .tPip.diamond { background: #3EC3F0; } .tPip.elite { background: #8A2BE2; }
+  .tPip.champion { background: #E4572E; } .tPip.unreal { background: linear-gradient(135deg, #7CFFCB, #C77DFF); }
+  @keyframes unrealGlow { 50% { box-shadow: 0 4px 0 #13294B, 0 0 34px rgba(124,255,203,.95); } }
+  @media (prefers-reduced-motion: reduce) {
+    .badge.tier-unreal.got, .badge.got .bIc { animation: none; }
+  }
+  .bdgEdit .rwItem { margin-bottom: 0; }
+
+  /* ---- v7l: Simpsons Wanted/Hunt banners + welcome cards + stand-in photos ---- */
+  .letterSky {
+    background: #70CCF5 url("assets/simpsons/sky.webp") center / cover no-repeat;
+  }
+  .letterStage, .noteStage {
+    position: relative;
+    width: 100%;
+    margin: auto;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    flex: 0 1 auto; min-height: 0; max-height: 100%;
+    z-index: 1;
+  }
+  .letterStage { max-width: 560px; padding: 8px 6px 10px; box-sizing: border-box; }
+  .noteStage { max-width: 400px; padding: 40px 22px 28px; box-sizing: border-box; }
+  .peekChar {
+    position: absolute; z-index: 2; pointer-events: none;
+    height: 168px; width: auto; max-width: 46%;
+    object-fit: contain;
+    filter: drop-shadow(0 6px 0 rgba(19,41,75,.18));
+  }
+  .peekBart { right: -30px; top: auto; bottom: 56px; height: 150px; transform-origin: 80% 100%; }
+  .peekHomer { left: -8px; top: -30px; bottom: auto; height: 150px; transform-origin: 20% 100%; }
+  .letterWrap.popIn .peekBart { animation: peekInRight .7s cubic-bezier(.2,1.25,.3,1) both; }
+  .noteWrap.popIn .peekHomer { animation: peekInLeft .7s cubic-bezier(.2,1.25,.3,1) both .05s; }
+  .letterWrap.popIn .letterSky, .noteWrap.popIn .letterSky { animation: skyIn .55s ease-out both; }
+  @keyframes peekInRight {
+    0% { transform: translate(36px, 18px) rotate(8deg); opacity: 0; }
+    100% { transform: none; opacity: 1; }
+  }
+  @keyframes peekInLeft {
+    0% { transform: translate(-36px, 22px) rotate(-8deg); opacity: 0; }
+    100% { transform: none; opacity: 1; }
+  }
+  @keyframes skyIn { 0% { opacity: 0; } 100% { opacity: 1; } }
+  .letterPage, .notePage {
+    background:
+      repeating-linear-gradient(transparent, transparent 27px, rgba(26,58,156,.07) 28px),
+      #FBF6E8;
+    background-size: 100% 28px;
+    border-radius: 4px 4px 6px 6px;
+  }
+  .letterBar {
+    font-size: 13px;
+    letter-spacing: .04em;
+    padding-left: 12px; padding-right: 12px;
+    text-shadow: 0 1px 0 rgba(255,255,255,.35);
+  }
+  .letterInner p { padding-right: 36px; }
+  .noteInner #noteBody {
+    font-size: 23px;
+    line-height: 1.5;
+  }
+  .noteDonutImg {
+    position: absolute; top: -18px; right: -14px;
+    width: 58px; height: 58px; object-fit: contain;
+    z-index: 4; pointer-events: none;
+    transform: rotate(12deg);
+    filter: drop-shadow(0 3px 0 rgba(19,41,75,.25));
+  }
+  .noteDonutImg.letterDonut { width: 50px; height: 50px; top: -14px; right: -12px; }
+  .noteEmoji { font-size: 40px; margin: 0 0 6px; }
+  .wantHead.wantBanner {
+    position: relative;
+    display: flex; align-items: flex-end; gap: 4px;
+    width: 100%; min-height: 96px;
+    margin: 12px 0 10px; padding: 0 12px 6px 4px;
+    background: #70CCF5; color: #13294B;
+    border: 4px solid #13294B; border-radius: 18px;
+    box-shadow: 0 4px 0 #13294B;
+    overflow: hidden;
+    font-family: "Luckiest Guy", "Arial Black", system-ui, sans-serif;
+    font-weight: 400; font-size: 22px;
+    text-align: left; cursor: pointer;
+    box-sizing: border-box;
+  }
+  .wantGroup:first-child .wantHead.wantBanner { margin-top: 6px; }
+  .wantGroup + .wantGroup { margin-top: 8px; }
+  .wantBannerBg {
+    position: absolute; inset: 0; z-index: 0;
+    background-size: cover; background-position: center top;
+    pointer-events: none;
+  }
+  .wantBannerBg::after {
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(90deg, rgba(112,204,245,.2) 0%, rgba(254,217,15,.55) 42%, rgba(254,217,15,.82) 100%);
+    pointer-events: none;
+  }
+  .wantPeek {
+    position: relative; z-index: 1;
+    height: 92px; width: auto; max-width: 42%;
+    object-fit: contain; object-position: left bottom;
+    margin: 0 0 -6px -2px;
+    filter: drop-shadow(2px 3px 0 rgba(19,41,75,.25));
+    pointer-events: none; flex: 0 0 auto;
+  }
+  .wantBannerText {
+    position: relative; z-index: 1;
+    flex: 1 1 auto; min-width: 0;
+    display: flex; flex-direction: column; justify-content: flex-end;
+    padding: 8px 0 8px 4px; gap: 0;
+  }
+  .wantBanner .wantChev {
+    position: absolute; top: 10px; right: 4px;
+    color: #1A3A9C; font-size: 22px; width: auto;
+    text-shadow: 0 1px 0 #FED90F;
+  }
+  .wantBanner .wantTitle {
+    color: #FED90F;
+    font-size: clamp(18px, 5.4vw, 24px);
+    line-height: 1.05;
+    letter-spacing: .02em;
+    -webkit-text-stroke: 1.4px #1A3A9C;
+    paint-order: stroke fill;
+    text-shadow: 2px 2px 0 #13294B;
+    word-wrap: break-word;
+    padding-right: 22px;
+  }
+  .wantBanner .wantN {
+    color: #1A3A9C;
+    font-family: inherit;
+    font-size: 14px;
+    letter-spacing: .04em;
+    opacity: 1;
+    margin-top: 2px;
+  }
+  .wantDiv { display: none; }
+  .isStandin { position: relative; overflow: hidden; }
+  .isStandin .standinImg, .hero.isStandin img, .khero.isStandin img {
+    width: 100%; height: 100%; object-fit: contain; display: block; background: #FBF6E8;
+  }
+  .thumb.isStandin .standinImg { object-fit: cover; }
+  .filmBadge {
+    position: absolute; right: 4px; bottom: 4px;
+    display: inline-flex; align-items: center; gap: 3px;
+    background: #FED90F; color: #13294B;
+    border: 2px solid #13294B; border-radius: 999px;
+    font-family: "Luckiest Guy", "Arial Black", system-ui, sans-serif;
+    font-size: 9px; font-weight: 400; letter-spacing: .02em;
+    line-height: 1.05; padding: 2px 6px 2px 3px;
+    transform: rotate(-8deg);
+    box-shadow: 0 2px 0 #13294B;
+    z-index: 2; pointer-events: none;
+    max-width: calc(100% - 8px);
+    white-space: nowrap;
+  }
+  .filmBadge img { width: 13px; height: 13px; object-fit: contain; flex: 0 0 auto; }
+  .li .filmBadge { font-size: 7px; padding: 1px 4px 1px 2px; right: 2px; bottom: 2px; }
+  .li .filmBadge img { width: 10px; height: 10px; }
+  .khero.isStandin, .hero.isStandin { position: relative; }
+  .khero .filmBadge, .hero .filmBadge {
+    font-size: 13px; padding: 4px 9px 4px 5px; right: 8px; bottom: 8px;
+  }
+  .khero .filmBadge img, .hero .filmBadge img { width: 18px; height: 18px; }
+  @media (prefers-reduced-motion: reduce) {
+    .letterWrap.popIn .peekBart, .noteWrap.popIn .peekHomer,
+    .letterWrap.popIn .letterSky, .noteWrap.popIn .letterSky { animation: none; }
+  }
+
+
 </style>
 
 
@@ -650,32 +840,38 @@
 
   <div id="dadLetter" class="letterWrap" hidden>
     <div class="letterSky" aria-hidden="true"></div>
-    <div class="letterFrame">
-      <article class="letterPage" role="dialog" aria-modal="true" aria-labelledby="letterTitle">
-        <div class="noteTape" aria-hidden="true"></div>
-        <div class="noteDonut letterDonut" aria-hidden="true"></div>
-        <div class="letterBar">The FatherSon Simpsons Collection</div>
-        <div class="letterInner" id="letterInner"></div>
-        <button type="button" class="btn yel letterGo" data-act="letterGo">Let’s go!</button>
-      </article>
+    <div class="letterStage">
+      <img class="peekChar peekBart" src="assets/simpsons/bart-wave.webp" alt="" aria-hidden="true">
+      <div class="letterFrame">
+        <article class="letterPage" role="dialog" aria-modal="true" aria-labelledby="letterTitle">
+          <div class="noteTape" aria-hidden="true"></div>
+          <img class="noteDonutImg letterDonut" src="assets/simpsons/donut.webp" alt="" aria-hidden="true">
+          <div class="letterBar">The FatherSon Simpsons Collection</div>
+          <div class="letterInner" id="letterInner"></div>
+          <button type="button" class="btn yel letterGo" data-act="letterGo">Let’s go!</button>
+        </article>
+      </div>
     </div>
   </div>
 
   <div id="dadNote" class="noteWrap" hidden>
     <div class="letterSky" aria-hidden="true"></div>
-    <div class="noteFrame">
-      <article class="notePage" role="dialog" aria-modal="true" aria-labelledby="noteTitle">
-        <div class="notePin" aria-hidden="true"></div>
-        <div class="noteTape" aria-hidden="true"></div>
-        <div class="noteDonut" aria-hidden="true"></div>
-        <div class="letterBar" id="noteTitle">A note from Dad</div>
-        <div class="noteInner">
-          <div class="noteEmoji" id="noteEmoji" aria-hidden="true"></div>
-          <p id="noteBody"></p>
-          <div class="letterSign" id="noteSign"><p class="dad">Dad x</p></div>
-        </div>
-        <button type="button" class="btn yel letterGo" data-act="noteGo" id="noteGoBtn">Aww thanks!</button>
-      </article>
+    <div class="noteStage">
+      <img class="peekChar peekHomer" src="assets/simpsons/homer-wave.webp" alt="" aria-hidden="true">
+      <div class="noteFrame">
+        <article class="notePage" role="dialog" aria-modal="true" aria-labelledby="noteTitle">
+          <div class="notePin" aria-hidden="true"></div>
+          <div class="noteTape" aria-hidden="true"></div>
+          <img class="noteDonutImg" src="assets/simpsons/donut.webp" alt="" aria-hidden="true">
+          <div class="letterBar" id="noteTitle">A note from Dad</div>
+          <div class="noteInner">
+            <div class="noteEmoji" id="noteEmoji" aria-hidden="true"></div>
+            <p id="noteBody"></p>
+            <div class="letterSign" id="noteSign"><p class="dad">Dad x</p></div>
+          </div>
+          <button type="button" class="btn yel letterGo" data-act="noteGo" id="noteGoBtn">Aww thanks!</button>
+        </article>
+      </div>
     </div>
     <p class="noteChaseSay" id="noteChaseSay" hidden></p>
     <button type="button" class="noteSkip" id="noteSkip" data-act="noteSkip" hidden>skip</button>
@@ -686,7 +882,7 @@
   (function () {
     'use strict';
     var API = "https://script.google.com/macros/s/AKfycbwSO6lF3RuWl0oihI0plwrpb2UKTVDG699nbfXpsiD9y-ZIlRxf44L4SZgw7whRzpeF/exec";
-    var VER = "v7j-20261122";
+    var VER = "v7l-20261122";
     // Plain fetch with no cookies, so Google's multi-account sign-in never gets involved.
     function post(fn, args) {
       return fetch(API, {

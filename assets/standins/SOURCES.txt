@@ -1,0 +1,29 @@
+Reference (stand-in) pictures for collection items that do not yet have a Drive
+photo folder. These are not our photos. They are local copies for the family app
+only, keyed by item ID. A real photo always replaces the stand-in once a folder
+and pictures are added. Nothing here was written to the collection sheet or Drive.
+
+FS-0124  Funko Pop Evil Groundskeeper Willie #824
+         toywiz.com product photo
+FS-0412  Funko Pop Homer with Reactor #1630 (FunKon London 2024)
+         7bucksapop.com listing photo
+FS-0304  Pez Homer (1999)
+         pezcollectors.com Homer Pez photo (loose dispenser)
+FS-0312  Franklin Mint A Family for the '90s Plate (1991)
+         eyeonspringfield.wordpress.com plate photo
+FS-0417  Pop-Out People A Fish Called Selma (Dark Horse 2001)
+         images.darkhorse.com cover
+FS-0418  WOS Itchy & Scratchy (Series 4, UK exclusive)
+         nowandthencollectibles.com packaged figure photo
+FS-0423  WOS Daredevil Bart
+         freaktoyz.com packaged figure photo
+FS-0415  Rubik's Magic Homer Simpson (2001)
+         wertoys.com packaged puzzle photo
+FS-0424  WOS Number One
+         springfieldtoys.com packaged figure photo
+FS-0098  Nelson Muntz figure (probable Burger King)
+         kongsdalantik.dk figure photo (BK stamp visible on reverse)
+FS-0276  Keyring - Homer 'D'oh!'
+         jma-uk.co.uk official enamel keyring photo
+FS-0066  Dressing Gown - The Simpsons Boys/Mens Robe
+         duvetland.com product photo
