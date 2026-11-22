@@ -1164,6 +1164,129 @@
     .rwHeroBar > i::after, .rwPrize.ready { animation: none; }
   }
 
+
+  /* ---- v7u: Dad HQ home ---- */
+  .dadHq {
+    position: relative;
+    overflow: hidden;
+    border: 4px solid var(--ink);
+    border-radius: 24px;
+    padding: 18px 120px 16px 16px;
+    margin: 0 0 14px;
+    min-height: 132px;
+    color: var(--ink);
+    box-shadow: 0 6px 0 rgba(19,41,75,.16);
+  }
+  .dadHqBg {
+    position: absolute; inset: 0;
+    background: #70CCF5 url("assets/simpsons/sky.webp") center / cover no-repeat;
+    z-index: 0;
+  }
+  .dadHqPeek {
+    position: absolute; right: -6px; bottom: -12px;
+    height: 124px; width: auto; z-index: 1;
+    pointer-events: none;
+    filter: drop-shadow(0 4px 0 rgba(19,41,75,.16));
+  }
+  .dadHqText { position: relative; z-index: 2; }
+  .dadHqEyebrow {
+    margin: 0 0 2px; font-weight: 900; font-size: 13px;
+    text-transform: uppercase; letter-spacing: .06em;
+  }
+  .dadHq h1 {
+    font-family: "Luckiest Guy", system-ui, sans-serif;
+    font-size: 42px; line-height: .95; margin: 0 0 4px; font-weight: 400;
+    letter-spacing: .02em; text-shadow: 2px 2px 0 #fff;
+  }
+  .dadHqSub { margin: 0; font-weight: 800; font-size: 14px; max-width: 16rem; }
+  .isDadHome h1, .isDadHome .funCard h2, .isDadHome .dadHero h2,
+  .isDadHome .dadInbox h2, .isDadHome .dadWheel h2,
+  .isDadHome .rwHomeCard h2, .isDadHome .jobCard h2 {
+    font-family: "Luckiest Guy", system-ui, sans-serif;
+    font-weight: 400;
+  }
+  .dadHero { padding: 16px 14px 16px; }
+  .dadHero h2, .dadInbox h2, .dadWheel h2 { font-size: 26px; margin: 0 0 2px; }
+  .dadHeroStats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 8px 0 10px; }
+  .dadStat {
+    background: #fff; border: 3px solid var(--ink); border-radius: 16px;
+    padding: 12px 10px; text-align: center;
+  }
+  .dadStat b { display: block; font-size: 28px; line-height: 1.05; }
+  .dadStat small { display: block; font-size: 12px; font-weight: 800; margin-top: 4px; }
+  .dadMile { margin: 8px 0 10px; }
+  .dadMileTop { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 6px; padding: 0 2px; }
+  .dadMileTop b { font-size: 15px; }
+  .dadMileTop small { font-weight: 800; font-size: 13px; white-space: nowrap; }
+  .dadMileBar {
+    height: 22px; background: #FFEFC2; border: 3px solid var(--ink);
+    border-radius: 999px; overflow: hidden; margin: 0 2px 6px;
+  }
+  .dadMileBar > i {
+    display: block; height: 100%; width: 0;
+    background: linear-gradient(90deg, #FF6B35, #FFD000);
+    transition: width .8s ease;
+  }
+  .dadInbox { background: linear-gradient(180deg, #FFE2A8, #FFD36E); }
+  .dadInbox.hasItems { background: linear-gradient(180deg, #FFD0C4, #F4A0B5); }
+  .dadInboxGrid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin: 8px 0 12px; }
+  .dadBadge {
+    background: #fff; border: 3px solid var(--ink); border-radius: 16px;
+    padding: 10px 6px; text-align: center; font: inherit; color: inherit; cursor: pointer;
+  }
+  .dadBadge b { display: block; font-size: 26px; line-height: 1; }
+  .dadBadge small { display: block; font-size: 11px; font-weight: 800; margin-top: 4px; line-height: 1.2; }
+  .dadInbox .btn { width: 100%; margin: 0 0 8px; }
+  .dadInbox .btn:last-of-type { margin-bottom: 0; }
+  .isDadHome .weekCard {
+    background: linear-gradient(180deg, #E6F4F8, #9FD3E6);
+    border: 4px solid var(--ink);
+    border-radius: 22px;
+    padding: 14px 14px 16px;
+  }
+  .isDadHome .weekCard h2 { font-size: 26px; }
+  .weekCell.wc0 { background: #FFE566; }
+  .weekCell.wc1 { background: #FCE1E8; }
+  .weekCell.wc2 { background: #C8F7C8; }
+  .weekCell.wc3 { background: #E6F4F8; }
+  .weekCell.wc4 { background: #FFD36E; }
+  .isDadHome .funCard.setCard, .isDadHome .funCard.onDayCard {
+    background: #fff;
+    border: 4px solid var(--ink);
+    border-radius: 22px;
+    padding: 14px;
+  }
+  .isDadHome .funCard.setCard { background: linear-gradient(180deg, #FFFBEA, #FFD36E); }
+  .isDadHome .funCard.onDayCard { background: linear-gradient(180deg, #E6F4F8, #C5E8F5); }
+  .isDadHome .funCard h2 { font-size: 26px; }
+  .dadWheel { text-align: center; padding: 18px 14px 16px; box-shadow: 0 5px 0 #C9A000; }
+  .dadWheelIc { font-size: 52px; line-height: 1; margin-bottom: 4px; }
+  .dadTools { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 4px 0 8px; }
+  .dadTool {
+    display: flex; flex-direction: column; align-items: flex-start; justify-content: center;
+    gap: 2px; text-align: left; font: inherit; color: var(--ink);
+    background: #fff; border: 4px solid var(--ink); border-radius: 22px;
+    padding: 14px 12px; min-height: 118px; cursor: pointer; text-decoration: none;
+    box-shadow: 0 5px 0 rgba(19,41,75,.16);
+  }
+  .dadTool span { font-size: 32px; line-height: 1; }
+  .dadTool b { font-size: 16px; font-weight: 900; line-height: 1.2; }
+  .dadTool small { font-size: 13px; font-weight: 700; opacity: .8; }
+  .dadTool.yel { background: var(--yel); }
+  .dadTool.pink { background: var(--pink); }
+  .dadTool.pinkL { background: var(--pinkL); }
+  .dadTool.skyL { background: var(--skyL); }
+  @media (prefers-reduced-motion: reduce) {
+    .dadMileBar > i { transition: none; }
+  }
+  @media (max-width: 360px) {
+    .dadHq { padding-right: 100px; }
+    .dadHq h1 { font-size: 34px; }
+    .dadHqPeek { height: 100px; }
+    .dadInboxGrid { grid-template-columns: 1fr; }
+  }
+
+
 </style>
 
   <style>
@@ -1251,7 +1374,7 @@
   (function () {
     'use strict';
     var API = "https://script.google.com/macros/s/AKfycbwSO6lF3RuWl0oihI0plwrpb2UKTVDG699nbfXpsiD9y-ZIlRxf44L4SZgw7whRzpeF/exec";
-    var VER = "v7t-20261122";
+    var VER = "v7u-20261122";
     // Plain fetch with no cookies, so Google's multi-account sign-in never gets involved.
     function post(fn, args) {
       return fetch(API, {

@@ -592,13 +592,16 @@
     });
   }
   function paintScanQueueHome(r) {
-    var box = $('homeScanQ'); if (!box) return;
     var n = (r && (r.waiting != null ? r.waiting : (r.pending ? r.pending.length : 0))) || 0;
-    if (S.boot && typeof S.boot.scanQueue === 'number' && !r) n = S.boot.scanQueue;
-    if (!n) { box.innerHTML = ''; return; }
-    box.innerHTML = '<div class="card yel tile" id="scanQTile"><div class="head">\uD83C\uDFF7\uFE0F Waiting for Dad</div><div class="big">' + n + '</div>' +
-      '<div class="hint">scan' + (n === 1 ? '' : 's') + ' saved for you to add or dismiss.</div>' +
-      '<button class="btn main" data-act="go" data-to="scanQueue">Review</button></div>';
+    if (S.boot && typeof S.boot.scanQueue === 'number' && !(r && (r.waiting != null || r.pending))) n = S.boot.scanQueue;
+    var box = $('homeScanQ');
+    if (box) {
+      if (!n) box.innerHTML = '';
+      else box.innerHTML = '<div class="card yel tile" id="scanQTile"><div class="head">\uD83C\uDFF7\uFE0F Waiting for Dad</div><div class="big">' + n + '</div>' +
+        '<div class="hint">scan' + (n === 1 ? '' : 's') + ' saved for you to add or dismiss.</div>' +
+        '<button class="btn main" data-act="go" data-to="scanQueue">Review</button></div>';
+    }
+    if ($('dadInbox')) paintDadInbox(null, n);
   }
   function showUnknownBarcode(digits) {
     S.lastCode = digits;
@@ -876,6 +879,8 @@
     if (!noHistory && S.screen && S.screen !== screen) { S.history.push([S.screen, S.params]); layerPush(); }
     if (S.history.length > 30) S.history.shift();
     S.screen = screen; S.params = params || {};
+    document.body.classList.toggle('isDadHome', !S.kid && screen === 'home' && S.role === PRIV);
+    document.body.classList.toggle('isKidHome', !!S.kid);
     renderTabs();
     var fn = SCREENS[screen] || SCREENS.home;
     window.scrollTo(0, 0);
@@ -3039,65 +3044,191 @@ SCREENS.who = function () {
       '</div></div>');
   };
 
+  var DAD_INBOX = { r: null, scan: 0 };
+  function nextMilestoneInfo(n) {
+    n = n || 0;
+    var caps = [425, 450, 500], t = 550;
+    while (t <= n + 50) { caps.push(t); t += 50; }
+    var prev = 0, next = caps[0], i;
+    for (i = 0; i < caps.length; i++) {
+      if (n < caps[i]) { next = caps[i]; prev = i ? caps[i - 1] : 0; break; }
+      if (i === caps.length - 1) { prev = caps[i]; next = caps[i] + 50; }
+    }
+    var span = Math.max(1, next - prev);
+    return { n: n, prev: prev, next: next, need: Math.max(0, next - n), pct: Math.max(0, Math.min(100, Math.round(100 * (n - prev) / span))) };
+  }
+  function dadOwnedCount() {
+    return (S.items || []).filter(function (it) { return isOwned(it) && !it.pending; }).length;
+  }
+  function dadHqBannerHtml() {
+    return '<div class="dadHq">' +
+      '<span class="dadHqBg" aria-hidden="true"></span>' +
+      '<img class="dadHqPeek" src="assets/simpsons/homer-donut.webp" alt="" aria-hidden="true">' +
+      '<div class="dadHqText"><p class="dadHqEyebrow">Alright, Dad</p><h1>Dad HQ</h1>' +
+      '<p class="dadHqSub">The plant-manager view of the collection. Donut included.</p></div></div>';
+  }
+  function dadHeroHtml(vs) {
+    var n = (vs && vs.items != null) ? vs.items : dadOwnedCount();
+    var mile = nextMilestoneInfo(n);
+    var h = '<div class="card yel dadHero"><h2>Collection HQ</h2><p class="funSub">How the donut pile is looking</p>';
+    h += '<div class="dadHeroStats">';
+    h += '<div class="dadStat"><b>' + n + '</b><small>items owned</small></div>';
+    if (isPriv() && vs && typeof vs.total === 'number') {
+      h += '<div class="dadStat dadStatVal"><b>' + gbp(vs.total) + '</b><small>collection value</small></div>';
+    } else if (S.role === PRIV && !isPriv()) {
+      h += '<div class="dadStat dadStatVal"><b>\uD83D\uDD12</b><small>Value needs your PIN</small></div>';
+    }
+    h += '</div>';
+    if (isPriv() && vs) {
+      if (vs.valued != null) h += '<p class="hint">' + vs.valued + ' with a value' + (vs.notValued ? ' \u00B7 ' + vs.notValued + ' still to value' : '') + '</p>';
+      var ms = vs.monthStart;
+      if (ms && ms.date && ms.date !== todayKey() && vs.change != null) {
+        h += '<div class="vchg ' + (vs.change >= 0 ? 'up' : 'down') + '">' + (vs.change >= 0 ? '\u25B2 +' : '\u25BC ') + gbp(Math.abs(vs.change)).replace(/^/, vs.change < 0 ? '-' : '') + ' this month <small>(since ' + esc(shortDate(ms.date)) + ')</small></div>';
+      }
+    }
+    h += '<div class="dadMile"><div class="dadMileTop"><b>Next milestone: ' + mile.next + '</b><small>' + (mile.need ? mile.need + ' to go' : 'You just hit it!') + '</small></div>' +
+      '<div class="dadMileBar" aria-label="' + mile.pct + ' percent to ' + mile.next + '"><i data-w="' + mile.pct + '%"></i></div>' +
+      '<p class="hint">' + mile.n + ' of ' + mile.next + ' things</p></div>';
+    if (isPriv()) h += '<button type="button" class="btn small" data-act="go" data-to="value">See the value page</button>';
+    return h + '</div>';
+  }
+  function paintDadHero(vs) {
+    var box = $('dadHero'); if (!box) return;
+    box.innerHTML = dadHeroHtml(vs);
+    requestAnimationFrame(function () {
+      var bar = box.querySelector('.dadMileBar > i');
+      if (!bar) return;
+      var w = bar.getAttribute('data-w') || '0%';
+      bar.style.width = '0%';
+      requestAnimationFrame(function () { bar.style.width = w; });
+    });
+  }
+  function dadInboxHtml(r, scanN) {
+    var photos = 0, asks = 0;
+    if (isPriv() && r) {
+      photos = (r.queue && r.queue.length) || r.waiting || 0;
+      asks = (r.pendingRequests && r.pendingRequests.length) || 0;
+    }
+    var scans = scanN || 0;
+    var total = photos + asks + scans;
+    var h = '<div class="card dadInbox' + (total ? ' hasItems' : '') + '"><h2>Waiting on you</h2>';
+    h += '<p class="funSub">' + (total ? 'A few things need the boss of the plant.' : 'All clear \u2014 nothing waiting. Nice work.') + '</p>';
+    if (!isPriv()) {
+      h += '<p class="hint">Enter your PIN to see photos and reward asks waiting for you.</p>';
+    }
+    h += '<div class="dadInboxGrid">';
+    h += '<button type="button" class="dadBadge" data-act="go" data-to="rewards"><b>' + (isPriv() ? photos : '\uD83D\uDD12') + '</b><small>photos to approve</small></button>';
+    h += '<button type="button" class="dadBadge" data-act="go" data-to="rewards"><b>' + (isPriv() ? asks : '\uD83D\uDD12') + '</b><small>reward asks</small></button>';
+    h += '<button type="button" class="dadBadge" data-act="go" data-to="scanQueue"><b>' + scans + '</b><small>scan' + (scans === 1 ? '' : 's') + ' in the queue</small></button>';
+    h += '</div>';
+    if (isPriv() && (photos || asks)) h += '<button type="button" class="btn main" data-act="go" data-to="rewards">Review approvals</button>';
+    if (scans) h += '<button type="button" class="btn' + ((photos || asks) ? '' : ' main') + '" data-act="go" data-to="scanQueue">Open scan queue</button>';
+    return h + '</div>';
+  }
+  function paintDadInbox(r, scanN) {
+    if (r) DAD_INBOX.r = r;
+    if (scanN != null && scanN !== '') {
+      if (typeof scanN === 'number') DAD_INBOX.scan = scanN;
+      else if (scanN && typeof scanN === 'object') DAD_INBOX.scan = (scanN.waiting != null ? scanN.waiting : ((scanN.pending || []).length)) || 0;
+    } else if (S.boot && typeof S.boot.scanQueue === 'number' && !DAD_INBOX.scan) {
+      DAD_INBOX.scan = S.boot.scanQueue;
+    }
+    var box = $('dadInbox'); if (!box) return;
+    box.innerHTML = dadInboxHtml(DAD_INBOX.r, DAD_INBOX.scan);
+  }
+  function dadWheelCardHtml() {
+    return '<div class="card yel dadWheel"><div class="dadWheelIc" aria-hidden="true">\uD83C\uDFA1</div><h2>Spin the wheel</h2>' +
+      '<p class="funSub">Picks something we already own to film next. Prefers things not posted yet.</p>' +
+      '<button type="button" class="btn main" data-act="go" data-to="wheel">Have a spin</button></div>';
+  }
+  function dadToolsHtml(b, t) {
+    t = t || {};
+    var dz = t.dropZone || { count: -1 };
+    var h = '<div class="dadTools">';
+    h += '<button type="button" class="dadTool yel" data-act="go" data-to="photos"><span>\uD83D\uDCF8</span><b>Photos to take</b><small>' + ((t.photos && t.photos.count) || 0) + ' still need a photo</small></button>';
+    if (isPriv()) {
+      h += '<button type="button" class="dadTool skyL" data-act="go" data-to="novalue"><span>\uD83D\uDCB7</span><b>No value yet</b><small>' + ((t.noValue && t.noValue.count) || 0) + ' to price</small></button>';
+    } else {
+      h += '<div class="dadTool skyL"><span>\uD83D\uDCB7</span><b>No value yet</b><small>Unlock with your PIN to add values</small></div>';
+    }
+    h += '<a class="dadTool pinkL" href="' + esc((dz.url) || (b && b.folders && b.folders.dropZone) || '#') + '" target="_blank" rel="noopener"><span>\uD83D\uDCE5</span><b>Drop Zone</b><small>' + (dz.count >= 0 ? dz.count + ' files waiting' : 'Open the folder') + '</small></a>';
+    h += '<button type="button" class="dadTool" data-act="go" data-to="wanted"><span>\u2B50</span><b>Wanted</b><small>' + ((t.wanted && t.wanted.count) || 0) + ' on the hunt list</small></button>';
+    h += '<button type="button" class="dadTool" data-act="go" data-to="swaps"><span>\uD83D\uDD01</span><b>Doubles to swap</b><small>Spare copies, no prices</small></button>';
+    h += '<button type="button" class="dadTool pink" data-act="go" data-to="add"><span>\u2795</span><b>Add an item</b><small>Snap it, name it, done</small></button>';
+    h += '</div>';
+    return h;
+  }
+
   SCREENS.home = function () {
     loadBoot().then(function (b) {
       var t = b.tiles, h = '';
-      h += '<h1>' + (S.role === PRIV ? 'Alright, ' : 'Hiya, ') + esc(S.role) + '! \uD83D\uDC4B</h1>';
-      h += '<div class="card ownCard"><label class="ownLabel" for="homeSearch">\uD83E\uDD14 Do I own it?</label>' +
-        '<div class="ownRow"><input id="homeSearch" class="ownInput" type="search" placeholder="Type a name\u2026" aria-label="Do I own it? Type a name" enterkeyhint="search" autocomplete="off">' +
-        '<button class="btn main scanBtn" data-act="scan" aria-label="Scan a barcode">\uD83D\uDCF7<small>Scan</small></button></div>' +
-        '<div id="ownOut"></div></div>';
-      var ownedN = S.items.filter(function (it) { return isOwned(it) && !it.pending; }).length;
-      if (isPriv()) h += '<div id="valueBox">' + valueCardHtml(localValueSummary()) + '</div>';
-      else h += '<div class="card skyL valueCard"><div class="head">\uD83E\uDDF8 Our collection</div><div class="big">' + ownedN + '</div><div class="hint">items owned</div></div>';
-      if (b.missing && (b.missing.tabs.length || b.missing.columns.length)) {
-        h += '<div class="warn">\uD83D\uDEA7 The sheet is still being tidied up, so a few bits (like ' + esc(b.missing.columns.concat(b.missing.tabs).join(', ')) + ') will appear once that\u2019s finished. Everything else works.</div>';
+      if (S.role === PRIV) {
+        h += dadHqBannerHtml();
+        h += '<div class="card ownCard dadOwn"><label class="ownLabel" for="homeSearch">\uD83E\uDD14 Do I own it?</label>' +
+          '<div class="ownRow"><input id="homeSearch" class="ownInput" type="search" placeholder="Type a name\u2026" aria-label="Do I own it? Type a name" enterkeyhint="search" autocomplete="off">' +
+          '<button class="btn main scanBtn" data-act="scan" aria-label="Scan a barcode">\uD83D\uDCF7<small>Scan</small></button></div>' +
+          '<div id="ownOut"></div></div>';
+        if (b.missing && (b.missing.tabs.length || b.missing.columns.length)) {
+          h += '<div class="warn">\uD83D\uDEA7 The sheet is still being tidied up, so a few bits (like ' + esc(b.missing.columns.concat(b.missing.tabs).join(', ')) + ') will appear once that\u2019s finished. Everything else works.</div>';
+        }
+        h += '<div id="dadHero"></div>';
+        h += '<div id="dadInbox"></div>';
+        h += '<div id="homeWeek"></div>';
+        h += '<div id="homeRewards"></div>';
+        h += '<div id="homeJobs"></div>';
+        h += funWorthHtml();
+        h += '<div id="homeOnThisDay"></div><div id="homeSetBars"></div>';
+        h += dadWheelCardHtml();
+        h += dadToolsHtml(b, t);
+        h += '<button class="btn pink full" style="margin-top:12px" data-act="kidEnter">\uD83E\uDDD2 ' + esc(KID_ROLE) + '\u2019s mode (big buttons, no prices)</button>';
+        h += '<div class="row" style="margin-top:6px"><button class="btn small" data-act="refresh">\u21BB Refresh</button><button class="btn small" data-act="go" data-to="stats">\uD83D\uDCCA Stats</button><button class="btn small" data-act="go" data-to="checklists">\u2705 Checklists</button><button class="btn small" data-act="go" data-to="help">\u2753 Help</button></div>';
+      } else {
+        h += '<h1>Hiya, ' + esc(S.role) + '! \uD83D\uDC4B</h1>';
+        h += '<div class="card ownCard"><label class="ownLabel" for="homeSearch">\uD83E\uDD14 Do I own it?</label>' +
+          '<div class="ownRow"><input id="homeSearch" class="ownInput" type="search" placeholder="Type a name\u2026" aria-label="Do I own it? Type a name" enterkeyhint="search" autocomplete="off">' +
+          '<button class="btn main scanBtn" data-act="scan" aria-label="Scan a barcode">\uD83D\uDCF7<small>Scan</small></button></div>' +
+          '<div id="ownOut"></div></div>';
+        var ownedN = S.items.filter(function (it) { return isOwned(it) && !it.pending; }).length;
+        h += '<div class="card skyL valueCard"><div class="head">\uD83E\uDDF8 Our collection</div><div class="big">' + ownedN + '</div><div class="hint">items owned</div></div>';
+        if (b.missing && (b.missing.tabs.length || b.missing.columns.length)) {
+          h += '<div class="warn">\uD83D\uDEA7 The sheet is still being tidied up, so a few bits (like ' + esc(b.missing.columns.concat(b.missing.tabs).join(', ')) + ') will appear once that\u2019s finished. Everything else works.</div>';
+        }
+        h += '<div id="homeRewards"></div>';
+        h += '<div id="homeJobs"></div>';
+        h += funWorthHtml();
+        h += '<div id="homeOnThisDay"></div><div id="homeSetBars"></div>';
+        h += '<div class="tiles">';
+        h += '<div class="card yel tile"><div class="head">\uD83C\uDFA1 Spin the wheel</div><div class="hint">Picks something we already own to film next. Prefers things not posted yet.</div><button class="btn main" data-act="go" data-to="wheel">Have a spin</button></div>';
+        h += '<div class="card tile"><div class="head">\uD83D\uDD01 Doubles to swap</div><div class="hint">Spare copies, with photos and no prices.</div><button class="btn main" data-act="go" data-to="swaps">See doubles</button></div>';
+        h += '<div class="card yel tile"><div class="head">\uD83D\uDCF8 Photos to take</div><div class="big">' + t.photos.count + '</div>';
+        if (t.photos.next) {
+          h += '<div class="hint">Next up: <b>' + esc(t.photos.next.name) + '</b></div><button class="btn main" data-act="snapFor" data-key="' + esc(t.photos.next.key) + '">\uD83D\uDCF7 Take photo</button>' +
+            '<button class="btn small" data-act="go" data-to="photos">See all ' + t.photos.count + '</button>';
+        } else h += '<div class="hint">All done - every item has photos. \uD83C\uDF89</div>';
+        h += '</div>';
+        h += '<div class="card skyL tile"><div class="head">\uD83D\uDCB7 No value yet</div><div class="big">' + t.noValue.count + '</div>';
+        h += '<div class="hint">That\u2019s ' + esc(PRIV) + '\u2019s job \uD83D\uDE09</div></div>';
+        var dz = t.dropZone || { count: -1 };
+        h += '<div class="card pinkL tile"><div class="head">\uD83D\uDCE5 Drop Zone</div><div class="big">' + (dz.count >= 0 ? dz.count : '?') + '</div><div class="hint">files waiting to be sorted into item folders</div>' +
+          '<a class="btn main" href="' + esc(dz.url || b.folders.dropZone) + '" target="_blank" rel="noopener">Open Drop Zone \u2197</a></div>';
+        h += '<div class="card tile"><div class="head">\u2B50 Wanted</div><div class="big">' + t.wanted.count + '</div><div class="hint">things on the hunt list</div><div id="dealLine"></div><button class="btn main" data-act="go" data-to="wanted">See the wanted list</button></div>';
+        if (t.checklist) {
+          var p = pct(t.checklist.owned, t.checklist.total);
+          h += '<div class="card skyL tile"><div class="head">\u2705 ' + esc(clTitle(t.checklist.tab)) + ' checklist</div><div class="big">' + t.checklist.owned + ' / ' + t.checklist.total + '</div>' +
+            '<div class="bar" role="img" aria-label="' + p + ' percent complete"><div style="width:' + p + '%"></div></div>' +
+            '<button class="btn main" data-act="go" data-to="checklist" data-tab="' + esc(t.checklist.tab) + '">See what\u2019s missing</button></div>';
+        }
+        h += '<div class="card pink tile"><div class="head">\u2795 Got something new?</div><div class="hint">Snap it, name it, done. It goes straight into the sheet with its own folder.</div><button class="btn main" data-act="go" data-to="add">Add an item</button></div>';
+        h += '</div>';
+        h += '<button class="btn pink full" style="margin-top:12px" data-act="kidEnter">\uD83E\uDDD2 ' + esc(KID_ROLE) + '\u2019s mode (big buttons, no prices)</button>';
+        h += '<div class="row" style="margin-top:6px"><button class="btn small" data-act="refresh">\u21BB Refresh</button><button class="btn small" data-act="go" data-to="stats">\uD83D\uDCCA Stats</button><button class="btn small" data-act="go" data-to="checklists">\u2705 Checklists</button><button class="btn small" data-act="go" data-to="help">\u2753 Help</button></div>';
       }
-      h += '<div id="homeRewards"></div>';
-      h += '<div id="homeJobs"></div>';
-      h += funWorthHtml();
-      h += '<div id="homeOnThisDay"></div><div id="homeSetBars"></div>';
-      if (S.role === PRIV) h += '<div id="homeScanQ"></div><div id="homeWeek"></div>';
-      h += '<div class="tiles">';
-      h += '<div class="card yel tile"><div class="head">\uD83C\uDFA1 Spin the wheel</div><div class="hint">Picks something we already own to film next. Prefers things not posted yet.</div><button class="btn main" data-act="go" data-to="wheel">Have a spin</button></div>';
-      h += '<div class="card tile"><div class="head">\uD83D\uDD01 Doubles to swap</div><div class="hint">Spare copies, with photos and no prices.</div><button class="btn main" data-act="go" data-to="swaps">See doubles</button></div>';
-      // Photos to take
-      h += '<div class="card yel tile"><div class="head">\uD83D\uDCF8 Photos to take</div><div class="big">' + t.photos.count + '</div>';
-      if (t.photos.next) {
-        h += '<div class="hint">Next up: <b>' + esc(t.photos.next.name) + '</b></div><button class="btn main" data-act="snapFor" data-key="' + esc(t.photos.next.key) + '">\uD83D\uDCF7 Take photo</button>' +
-          '<button class="btn small" data-act="go" data-to="photos">See all ' + t.photos.count + '</button>';
-      } else h += '<div class="hint">All done - every item has photos. \uD83C\uDF89</div>';
-      h += '</div>';
-      // Rewards list lives in #homeRewards (full card, both unlocked and not)
-      // No value
-      h += '<div class="card skyL tile"><div class="head">\uD83D\uDCB7 No value yet</div><div class="big">' + t.noValue.count + '</div>';
-      if (isPriv() && t.noValue.next) h += '<div class="hint">Next: <b>' + esc(t.noValue.next.name) + '</b></div><button class="btn main" data-act="valueFor" data-key="' + esc(t.noValue.next.key) + '">Add a value</button>' +
-        '<button class="btn small" data-act="go" data-to="novalue">See all</button>';
-      else if (!isPriv()) h += '<div class="hint">That\u2019s ' + esc(PRIV) + '\u2019s job \uD83D\uDE09</div>';
-      else h += '<div class="hint">Everything has a value. \uD83C\uDF89</div>';
-      h += '</div>';
-      // Drop Zone
-      var dz = t.dropZone || { count: -1 };
-      h += '<div class="card pinkL tile"><div class="head">\uD83D\uDCE5 Drop Zone</div><div class="big">' + (dz.count >= 0 ? dz.count : '?') + '</div><div class="hint">files waiting to be sorted into item folders</div>' +
-        '<a class="btn main" href="' + esc(dz.url || b.folders.dropZone) + '" target="_blank" rel="noopener">Open Drop Zone \u2197</a></div>';
-      // Wanted
-      h += '<div class="card tile"><div class="head">\u2B50 Wanted</div><div class="big">' + t.wanted.count + '</div><div class="hint">things on the hunt list</div><div id="dealLine"></div><button class="btn main" data-act="go" data-to="wanted">See the wanted list</button></div>';
-      // Checklist
-      if (t.checklist) {
-        var p = pct(t.checklist.owned, t.checklist.total);
-        h += '<div class="card skyL tile"><div class="head">\u2705 ' + esc(clTitle(t.checklist.tab)) + ' checklist</div><div class="big">' + t.checklist.owned + ' / ' + t.checklist.total + '</div>' +
-          '<div class="bar" role="img" aria-label="' + p + ' percent complete"><div style="width:' + p + '%"></div></div>' +
-          '<button class="btn main" data-act="go" data-to="checklist" data-tab="' + esc(t.checklist.tab) + '">See what\u2019s missing</button></div>';
-      }
-      // Add
-      h += '<div class="card pink tile"><div class="head">\u2795 Got something new?</div><div class="hint">Snap it, name it, done. It goes straight into the sheet with its own folder.</div><button class="btn main" data-act="go" data-to="add">Add an item</button></div>';
-      h += '</div>';
-      h += '<button class="btn pink full" style="margin-top:12px" data-act="kidEnter">\uD83E\uDDD2 ' + esc(KID_ROLE) + '\u2019s mode (big buttons, no prices)</button>';
-      h += '<div class="row" style="margin-top:6px"><button class="btn small" data-act="refresh">\u21BB Refresh</button><button class="btn small" data-act="go" data-to="stats">\uD83D\uDCCA Stats</button><button class="btn small" data-act="go" data-to="checklists">\u2705 Checklists</button><button class="btn small" data-act="go" data-to="help">\u2753 Help</button></div>';
       setMain(h);
       paintHomeFunAndMiles();
       bindFunSwipe();
       if (S.role === PRIV) {
+        paintDadHero(isPriv() ? localValueSummary() : null);
+        paintDadInbox(null, (b && typeof b.scanQueue === 'number') ? b.scanQueue : 0);
         if (b && typeof b.scanQueue === 'number') paintScanQueueHome({ waiting: b.scanQueue });
         loadScanQueue().then(paintScanQueueHome).catch(noop);
       }
@@ -3107,10 +3238,14 @@ SCREENS.who = function () {
       bindOwnSearch('homeSearch', 'ownOut');
       refreshDealBadges();
       loadHomeWanted();
-      loadRewards(true).then(function (r) { paintRewardsHome(r); paintJobs(r); }).catch(function () { paintJobs({}); });
+      loadRewards(true).then(function (r) {
+        paintRewardsHome(r);
+        paintJobs(r);
+        if (S.role === PRIV) paintDadInbox(r);
+      }).catch(function () { paintJobs({}); if (S.role === PRIV) paintDadInbox({}); });
       if (isPriv()) {
         call('getValueSummary', S.role).then(function (vs) {
-          if (vs && typeof vs.total === 'number' && $('valueBox') && S.screen === 'home') $('valueBox').innerHTML = valueCardHtml(vs);
+          if (vs && typeof vs.total === 'number' && S.screen === 'home') paintDadHero(vs);
         }).catch(noop);
       }
     }).catch(oops);
@@ -4313,8 +4448,8 @@ SCREENS.who = function () {
       ['\uD83E\uDDF9 Jobs done', acts.job],
       ['\u2B50 Points earned', pts]
     ];
-    return '<div class="funCard weekCard"><h2>Last 7 days</h2><p class="funSub">' + esc(KID_ROLE) + '\u2019s week</p><div class="weekGrid">' +
-      lines.map(function (l) { return '<div class="weekCell"><b>' + l[1] + '</b><small>' + l[0] + '</small></div>'; }).join('') +
+    return '<div class="funCard weekCard"><h2>Last 7 days</h2><p class="funSub">The week\u2019s haul \u2014 ' + esc(KID_ROLE) + '\u2019s points, photos and jobs</p><div class="weekGrid">' +
+      lines.map(function (l, i) { return '<div class="weekCell wc' + i + '"><b>' + l[1] + '</b><small>' + l[0] + '</small></div>'; }).join('') +
       '</div><p class="hint">' + (asks ? asks + ' reward ask' + (asks === 1 ? '' : 's') + ' in the last week. ' : '') +
       (waiting ? waiting + ' photo' + (waiting === 1 ? '' : 's') + ' waiting for you.' : 'No photos waiting.') + '</p>' +
       '<button type="button" class="btn main" data-act="go" data-to="rewards">Open rewards</button></div>';
