@@ -118,7 +118,7 @@
   }
   function offlineErr() { return new Error('\uD83D\uDCF4 No signal right now, and this bit wasn\u2019t saved on the phone yet. It\u2019ll work again as soon as you\u2019re back online.'); }
   var READ_FNS = { getBootstrap: 1, getWanted: 1, getChecklists: 1, getChecklist: 1, getItem: 1, getStats: 1, getAllMissing: 1, getPostedBoard: 1, getDuplicates: 1, getPhotoTodo: 1, getNoValue: 1, getValueSummary: 1, getItemPhotos: 1, getHistory: 1, getRewards: 1, getQueuePhoto: 1 };
-  var WRITE_FNS = { saveItem: 1, addItem: 1, markGotIt: 1, setPosted: 1, uploadMedia: 1, saveBarcode: 1, setMainPhoto: 1, requestReward: 1, decideReward: 1, saveRewards: 1, savePointRules: 1, decidePhoto: 1 };
+  var WRITE_FNS = { saveItem: 1, addItem: 1, markGotIt: 1, setPosted: 1, uploadMedia: 1, saveBarcode: 1, setMainPhoto: 1, requestReward: 1, decideReward: 1, saveRewards: 1, savePointRules: 1, saveJobs: 1, completeJob: 1, decidePhoto: 1 };
   function tokenNow() { return S.kid ? '' : (LS.get('dadToken') || ''); }   // Son's mode never sends the PIN token
   function cacheKey(fn, args) { return 'c|' + fn + '|' + JSON.stringify(args) + '|' + (tokenNow() && dadUnlocked() ? 'p' : 'n'); }
   function hasPending(args) { return args.some(function (a) { return typeof a === 'string' && a.indexOf('pending:') === 0; }); }
@@ -1185,6 +1185,7 @@
         '<button type="button" class="kfeature pinkL" data-act="go" data-to="kidBadges"><span>\uD83C\uDFC6</span><span class="kfeatTxt"><b>My badges</b><small id="kidBadgeN">see what you\u2019ve earned</small></span></button>' +
         '<div id="kidMissions"></div>' +
         '<button type="button" class="kfeature yel" data-act="go" data-to="kidRewards"><span>\u2B50</span><span class="kfeatTxt"><b>My points</b><small id="kidPtsN">earn rewards!</small></span></button>' +
+        '<div id="kidJobs"></div>' +
         '<div id="kidEarn"></div>' +
         '</div>' +
         '<div class="ownCard card"><label class="ownLabel" for="kidSearch">\uD83D\uDD0D Have we got it?</label><input id="kidSearch" class="ownInput" type="search" placeholder="Type a name\u2026" autocomplete="off"><div id="kidOwnOut"></div></div>' +
@@ -1201,7 +1202,7 @@
       bindOwnSearch('kidSearch', 'kidOwnOut');
       checkNewBadges().then(function (B) { var n = B.filter(function (b) { return b.got; }).length; if ($('kidBadgeN')) $('kidBadgeN').textContent = n + ' badge' + (n === 1 ? '' : 's') + ' so far!'; paintMissions(B); }).catch(noop);
       loadHomeWanted().then(function (w) { var n = w.filter(function (x) { return kidSafe(x); }).length; if ($('kidHuntN')) $('kidHuntN').textContent = n + ' to find!'; });
-      loadRewards().then(function (r) { if ($('kidPtsN') && r) $('kidPtsN').textContent = r.balance + ' points \u00B7 ' + r.level.name; paintEarnPoints(r); }).catch(noop);
+      loadRewards().then(function (r) { if ($('kidPtsN') && r) $('kidPtsN').textContent = r.balance + ' points \u00B7 ' + r.level.name; paintJobs(r); paintEarnPoints(r); }).catch(noop);
       recordBadgeVisit();
       maybeShowLetter();
       bindFunSwipe();
@@ -2523,7 +2524,7 @@
     catch (e) { return String(iso).slice(0, 16); }
   }
   function rwAction(a) {
-    return ({ photo: 'Photo', found: 'Ticked off a find', update: 'Updated something', add: 'New item', streak: '3-day streak bonus' })[a] || a;
+    return ({ photo: 'Photo', found: 'Ticked off a find', update: 'Updated something', add: 'New item', streak: '3-day streak bonus', job: 'Job done' })[a] || a;
   }
   function paintRewardsHome(r) {
     var box = $('rwHomeTile'); if (!box || !r) return;
@@ -2552,7 +2553,7 @@
     busy('Counting your points\u2026');
     loadBoot().then(function () { return loadRewards(true); }).then(function (r) {
       done();
-      var rewards = (r.rewards || []).map(function (x) {
+      var rewards = (r.rewards || []).slice().sort(function (a, b) { return (a.cost - b.cost) || String(a.title || '').localeCompare(String(b.title || '')); }).map(function (x) {
         var pending = (r.requests || []).some(function (q) { return q.title === x.title && q.status === 'Pending'; });
         var need = x.cost - (r.balance || 0);
         var btn = pending ? '<span class="pill yel">Asked \u2014 waiting for Dad</span>' :
@@ -2570,6 +2571,7 @@
         (function () {
         var photo = ptsVal(r, 'photo', 10);
         return (r.waiting ? '<div class="nudge">Dad is having a look at ' + r.waiting + ' photo' + (r.waiting === 1 ? '' : 's') + '. You get ' + photo + ' point' + (photo === 1 ? '' : 's') + ' for each one he says yes to.</div>' : '') +
+        jobsCardHtml(r) +
         earnCardHtml(r) +
         '<h2>Rewards you can ask for</h2><div class="rwList">';
       })() +
@@ -2594,6 +2596,15 @@
           '<div class="row"><button class="btn green" data-act="rwYes" data-id="' + esc(x.id) + '">Yes (PIN)</button>' +
           '<button class="btn" data-act="rwNo" data-id="' + esc(x.id) + '">Not this time (PIN)</button></div></div>';
       }).join('');
+      var jobRows = (r.allJobs || []).map(function (x) {
+        var done = x.doneToday ? '<span class="pill yel">Done today</span>' :
+          '<button class="btn green" data-act="jobDone" data-id="' + esc(x.id) + '">Done</button>';
+        return '<div class="rwItem" data-id="' + esc(x.id) + '"><p class="rwEditHead">Edit this job</p>' +
+          '<label class="field">Job name <input type="text" class="jobTitle" data-id="' + esc(x.id) + '" value="' + esc(x.title) + '" maxlength="60" autocomplete="off"></label>' +
+          '<label class="field">Points <input type="number" class="jobCost" data-id="' + esc(x.id) + '" value="' + x.cost + '" min="5" step="5"></label>' +
+          '<label class="rwOnRow"><input type="checkbox" class="jobOn" data-id="' + esc(x.id) + '"' + (x.active ? ' checked' : '') + '> On the list</label>' +
+          '<div class="row" style="margin-top:8px">' + done + '</div></div>';
+      }).join('');
       var all = (r.allRewards || []).map(function (x) {
         return '<div class="rwItem" data-id="' + esc(x.id) + '"><p class="rwEditHead">Edit this reward</p>' +
           '<label class="field">Reward name <input type="text" class="rwTitle" data-id="' + esc(x.id) + '" value="' + esc(x.title) + '" maxlength="60" autocomplete="off"></label>' +
@@ -2610,6 +2621,9 @@
         (r.streak ? ' \u00B7 ' + r.streak + '-day streak' : '') + '</div>' +
         '<h2>Photos waiting</h2>' + (q ? '<div class="rwList">' + q + '</div>' : '<p class="hint">None waiting \u2014 you\u2019re all caught up.</p>') +
         '<h2>Reward asks</h2>' + (asks ? '<div class="rwList">' + asks + '</div>' : '<p class="hint">No asks waiting.</p>') +
+        (r.allJobs || r.jobs ? '' : '<div class="nudge">Jobs need a quick Code.gs update on the collection sheet (version 4.7). Until then, rewards still work as usual.</div>') +
+        '<h2>Jobs</h2><p class="hint">Give each job a name and points. Tap Done when it\u2019s finished to award the points (once per job per day). Switch one off rather than deleting it. No money in the names, please.</p><div class="rwList" id="jobEdit">' + jobRows + '</div>' +
+        '<p><button type="button" class="rwAdd" data-act="jobAdd">+ Add job</button></p>' +
         '<h2>Rewards he can ask for</h2><p class="hint">You can edit the name, the points, or tick \u201COn the list\u201D. Add as many as you like, then tap Save. Switch one off rather than deleting it. No money in the names, please.</p><div class="rwList" id="rwEdit">' + all + '</div>' +
         '<p><button type="button" class="rwAdd" data-act="rwAdd">+ Add reward</button></p>' +
         '<h2>Points he earns</h2><p class="hint">Change how many points a photo, a tick, or a new item is worth.</p>' +
@@ -2685,6 +2699,50 @@
     var inp = el.querySelector('.rwTitle'); if (inp) inp.focus();
     var btn = $('rwSaveBtn'); if (btn) { btn.textContent = 'Save'; btn.classList.remove('saved'); }
   }
+  function addJobRow() {
+    var box = $('jobEdit'); if (!box) return;
+    var el = document.createElement('div');
+    el.className = 'rwItem';
+    el.innerHTML = '<p class="rwEditHead">New job</p>' +
+      '<label class="field">Job name <input type="text" class="jobTitle" maxlength="60" placeholder="e.g. Clean your room" autocomplete="off"></label>' +
+      '<label class="field">Points <input type="number" class="jobCost" min="5" step="5" value="50"></label>' +
+      '<label class="rwOnRow"><input type="checkbox" class="jobOn" checked> On the list</label>';
+    box.appendChild(el);
+    var inp = el.querySelector('.jobTitle'); if (inp) inp.focus();
+    var btn = $('rwSaveBtn'); if (btn) { btn.textContent = 'Save'; btn.classList.remove('saved'); }
+  }
+  function collectJobsForm() {
+    var list = [], bad = '';
+    document.querySelectorAll('#jobEdit .rwItem').forEach(function (el) {
+      var titleEl = el.querySelector('.jobTitle'), costEl = el.querySelector('.jobCost');
+      if (!titleEl || !costEl) return;
+      var title = (titleEl.value || '').replace(/\s+/g, ' ').trim();
+      if (!title) return;
+      var cost = parseInt(costEl.value, 10);
+      var on = el.querySelector('.jobOn');
+      var id = (titleEl.getAttribute('data-id') || el.getAttribute('data-id') || '');
+      if (/[\u00a3$\u20ac]|\b\d+\s*p\b|\bpounds?\b|\bquid\b|\bmoney\b|\bcash\b|\bdollars?\b|\beuros?\b|\bpence\b/i.test(title)) bad = 'Keep money out of job names.';
+      list.push({ id: id, title: title, cost: cost, active: on ? on.checked : true });
+    });
+    return { list: list, bad: bad };
+  }
+  function completeJobUI(id) {
+    if (!id) return;
+    var row = document.querySelector('#jobEdit .rwItem[data-id="' + id.replace(/"/g, '') + '"]');
+    var title = (row && row.querySelector('.jobTitle') && row.querySelector('.jobTitle').value) || 'this job';
+    var cost = (row && row.querySelector('.jobCost') && row.querySelector('.jobCost').value) || '';
+    confirmSheet('Job done?', 'Award <b>' + esc(String(cost || '')) + '</b> points for <b>' + esc(title) + '</b>? Once a day for each job.', 'Yes, Done', 'Not yet').then(function (ok) {
+      if (!ok) return;
+      withDadPinThen(function () {
+        busy('Adding the points\u2026');
+        return call('completeJob', id, S.role).then(function (r) {
+          done(); RW = null;
+          toast((r && r.points ? ('+' + r.points + ' points') : 'Done') + (r && r.title ? ' \u2014 ' + r.title : '') + '.', 'good');
+          go('rewards', {}, true);
+        });
+      });
+    }).catch(oops);
+  }
   function collectRewardsForm() {
     var list = [], bad = '';
     document.querySelectorAll('#rwEdit .rwItem').forEach(function (el) {
@@ -2733,6 +2791,8 @@
     var form = collectRewardsForm();
     if (form.bad) { toast(form.bad, 'oops'); return; }
     if (!form.list.length) { toast('Add at least one reward with a name.', 'oops'); return; }
+    var jobs = collectJobsForm();
+    if (jobs.bad) { toast(jobs.bad, 'oops'); return; }
     withDadPinThen(function () {
       busy('Saving\u2026');
       var p1 = call('saveRewards', form.list, S.role);
@@ -2741,7 +2801,12 @@
         if (/unknown action/i.test(msg)) return { skipped: true };
         throw e;
       });
-      return Promise.all([p1, p2]).then(function (res) {
+      var p3 = $('jobEdit') ? call('saveJobs', jobs.list, S.role).catch(function (e) {
+        var msg = String((e && e.message) || e || '');
+        if (/unknown action/i.test(msg)) return { skipped: true };
+        throw e;
+      }) : Promise.resolve(null);
+      return Promise.all([p1, p2, p3]).then(function (res) {
         done();
         RW = null;
         var saved = res[0] && res[0].rewards;
@@ -2749,8 +2814,14 @@
           var titles = $('rwEdit').querySelectorAll('.rwTitle');
           saved.forEach(function (r, i) { if (titles[i]) titles[i].setAttribute('data-id', r.id); });
         }
+        var savedJobs = res[2] && res[2].jobs;
+        if (savedJobs && $('jobEdit')) {
+          var jt = $('jobEdit').querySelectorAll('.jobTitle');
+          savedJobs.forEach(function (r, i) { if (jt[i]) { jt[i].setAttribute('data-id', r.id); if (jt[i].closest('.rwItem')) jt[i].closest('.rwItem').setAttribute('data-id', r.id); } });
+        }
         markRewardsSaved();
         if (res[1] && res[1].skipped) toast('Rewards saved. Points rules need the server update before they will stick.', 'good');
+        else if (res[2] && res[2].skipped) toast('Rewards saved. Jobs need the server update (v4.7) before they will stick.', 'good');
         loadRewards(true);
       }).catch(oops);
     }).catch(oops);
@@ -4333,6 +4404,31 @@ SCREENS.who = function () {
     var el = $('kidEarn'); if (!el) return;
     el.innerHTML = earnCardHtml(r || RW || {});
   }
+  function jobEmoji(t) {
+    var s = String(t || '').toLowerCase();
+    if (/dish/.test(s)) return '\uD83C\uDF74';
+    if (/room|bed/.test(s)) return '\uD83D\uDECF\uFE0F';
+    if (/rubbish|trash|bin/.test(s)) return '\uD83D\uDDD1\uFE0F';
+    if (/garden|lawn|grass/.test(s)) return '\uD83C\uDF3F';
+    return '\uD83E\uDDF9';
+  }
+  function jobsCardHtml(r) {
+    var jobs = ((r && r.jobs) || []).slice();
+    if (!jobs.length) return '';
+    jobs.sort(function (a, b) { return (a.cost - b.cost) || String(a.title || '').localeCompare(String(b.title || '')); });
+    var h = '<div class="jobCard"><h2>Jobs</h2><p class="jobSub">Jobs from Dad \u2014 he taps Done and you get the points</p><div class="jobRows">';
+    jobs.forEach(function (j) {
+      h += '<div class="jobRow">' +
+        '<span class="eIc">' + jobEmoji(j.title) + '</span>' +
+        '<span class="eTxt"><b>' + esc(j.title) + '</b><small>' + (j.doneToday ? 'Done today \u2014 well done!' : 'Dad taps Done when it\u2019s finished') + '</small></span>' +
+        '<span class="ePts">+' + j.cost + '</span></div>';
+    });
+    return h + '</div></div>';
+  }
+  function paintJobs(r) {
+    var el = $('kidJobs'); if (!el) return;
+    el.innerHTML = jobsCardHtml(r || RW || {});
+  }
   function runEarnJob(kind) {
     if (kind === 'photo' || kind === 'update') go('kidStuff');
     else if (kind === 'add') { S.add = null; go('add'); }
@@ -4735,6 +4831,8 @@ SCREENS.who = function () {
       case 'rwPhotoNo': decidePhotoUI(el.getAttribute('data-id'), false, false); break;
       case 'rwSave': saveRewardsUI(); break;
       case 'rwAdd': addRewardRow(); break;
+      case 'jobAdd': addJobRow(); break;
+      case 'jobDone': completeJobUI(el.getAttribute('data-id')); break;
       case 'bdgAdd': addBadgeRow(); break;
       case 'bdgSave': saveBadgesUI(); break;
       case 'bdgRemove': (function () { var row = el.closest && el.closest('.bdgRow'); if (row && row.parentNode) row.parentNode.removeChild(row); var btn = $('bdgSaveBtn'); if (btn) { btn.textContent = 'Save'; btn.classList.remove('saved'); } })(); break;
@@ -4759,7 +4857,7 @@ SCREENS.who = function () {
   });
   $('stuckBtn').addEventListener('click', function () {
     if (!S.kid) return showHelp();
-    sheet('How it works', '<ul><li>\uD83E\uDDF8 <b>Our stuff</b>: tap anything to see it big or add a photo.</li><li>\u2B50 <b>Hunt</b>: things we\u2019re looking for. Found one? Tap \u201CFound it!\u201D</li><li>\uD83D\uDCF7 <b>Scan</b>: point at a box\u2019s barcode to see if we\u2019ve got it.</li><li>\u2709\uFE0F <b>Letter from Dad</b>: how it all started. It pops up every now and then, and you can open it again any time.</li><li>\uD83D\uDCDD <b>Notes from Dad</b>: a little note every few visits, and all of them under Notes from Dad.</li><li>\uD83D\uDE04 <b>A daft joke</b>: a new one when you open this mode. Tap it for another.</li><li>\uD83C\uDF66 <b>What\u2019s our collection worth?</b>: swipe or tap to try ice creams, Dons tickets, tractors and lots more.</li><li>\u2B50 <b>My points</b>: earn points and ask Dad for rewards.</li><li>No faces in photos - hands are fine.</li></ul>',
+    sheet('How it works', '<ul><li>\uD83E\uDDF8 <b>Our stuff</b>: tap anything to see it big or add a photo.</li><li>\u2B50 <b>Hunt</b>: things we\u2019re looking for. Found one? Tap \u201CFound it!\u201D</li><li>\uD83D\uDCF7 <b>Scan</b>: point at a box\u2019s barcode to see if we\u2019ve got it.</li><li>\u2709\uFE0F <b>Letter from Dad</b>: how it all started. It pops up every now and then, and you can open it again any time.</li><li>\uD83D\uDCDD <b>Notes from Dad</b>: a little note every few visits, and all of them under Notes from Dad.</li><li>\uD83D\uDE04 <b>A daft joke</b>: a new one when you open this mode. Tap it for another.</li><li>\uD83C\uDF66 <b>What\u2019s our collection worth?</b>: swipe or tap to try ice creams, Dons tickets, tractors and lots more.</li><li>\u2B50 <b>My points</b>: earn points and ask Dad for rewards.</li><li>\uD83E\uDDF9 <b>Jobs</b>: jobs from Dad, like clean your room. He taps Done and you get the points.</li><li>No faces in photos - hands are fine.</li></ul>',
       [{ label: '\u21BB Refresh', value: 'refresh' }, { label: 'Got it!', value: 'ok', cls: 'main' }]).then(function (v) { if (v === 'refresh') { S.boot = null; thumbsRefresh(); go(S.screen || 'kid', S.params, true); } });
   });
   $('homeBtn').addEventListener('click', function () { if (S.kid) { S.history = []; go('kid', {}, true); return; } if (S.role) { S.history = []; go(S.screen === 'home' ? 'settings' : 'home', {}, true); } });

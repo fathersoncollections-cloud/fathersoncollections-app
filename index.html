@@ -705,6 +705,55 @@
     border: 2px solid var(--ink);
   }
 
+  .jobCard {
+    background: linear-gradient(180deg, #C8F7C8, #7EDC7E);
+    border: 3px solid var(--ink);
+    border-radius: 20px;
+    padding: 12px 12px 10px;
+    color: var(--ink);
+    box-shadow: 0 5px 0 #2E7D32;
+    text-align: left;
+    margin-top: 10px;
+  }
+  .jobCard h2 {
+    font-family: "Luckiest Guy", system-ui, sans-serif;
+    color: #13294B;
+    font-size: 24px;
+    line-height: 1.05;
+    margin: 0 0 2px;
+    letter-spacing: .02em;
+    font-weight: 400;
+  }
+  .jobCard .jobSub { font-size: 13px; font-weight: 700; opacity: .8; margin: 0 0 10px; }
+  .jobRows { display: flex; flex-direction: column; gap: 8px; }
+  .jobRow {
+    display: flex; align-items: center; gap: 10px;
+    width: 100%; text-align: left;
+    background: #fff;
+    border: 3px solid var(--ink);
+    border-radius: 14px;
+    padding: 8px 10px;
+    color: var(--ink);
+    font: inherit;
+  }
+  .jobRow .eIc { font-size: 28px; flex: 0 0 auto; line-height: 1; }
+  .jobRow .eTxt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .jobRow b { font-size: 16px; font-weight: 900; line-height: 1.15; }
+  .jobRow small { font-size: 12px; font-weight: 700; opacity: .8; line-height: 1.25; }
+  .jobRow .ePts {
+    flex: 0 0 auto;
+    background: #13294B;
+    color: #A8F5A8;
+    font-size: 13px;
+    font-weight: 900;
+    border-radius: 999px;
+    padding: 5px 8px;
+    border: 2px solid var(--ink);
+  }
+  #kidJobs:empty, #kidEarn:empty { display: none; }
+  #kidJobs { margin-top: 10px; }
+
+
   .wantRefPlaceholder { width: 100%; height: auto; }
 
 
@@ -985,7 +1034,7 @@
   (function () {
     'use strict';
     var API = "https://script.google.com/macros/s/AKfycbwSO6lF3RuWl0oihI0plwrpb2UKTVDG699nbfXpsiD9y-ZIlRxf44L4SZgw7whRzpeF/exec";
-    var VER = "v7m-20261122";
+    var VER = "v7n-20261122";
     // Plain fetch with no cookies, so Google's multi-account sign-in never gets involved.
     function post(fn, args) {
       return fetch(API, {
