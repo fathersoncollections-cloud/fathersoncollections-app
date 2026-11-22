@@ -127,7 +127,7 @@
   }
   function offlineErr() { return new Error('\uD83D\uDCF4 No signal right now, and this bit wasn\u2019t saved on the phone yet. It\u2019ll work again as soon as you\u2019re back online.'); }
   var READ_FNS = { getBootstrap: 1, getWanted: 1, getChecklists: 1, getChecklist: 1, getItem: 1, getStats: 1, getAllMissing: 1, getPostedBoard: 1, getDuplicates: 1, getPhotoTodo: 1, getNoValue: 1, getValueSummary: 1, getItemPhotos: 1, getHistory: 1, getRewards: 1, getQueuePhoto: 1, getScanQueue: 1 };
-  var WRITE_FNS = { saveItem: 1, addItem: 1, markGotIt: 1, setPosted: 1, uploadMedia: 1, saveBarcode: 1, setMainPhoto: 1, requestReward: 1, decideReward: 1, saveRewards: 1, savePointRules: 1, saveJobs: 1, completeJob: 1, decidePhoto: 1, queueScan: 1, dismissScan: 1, markScanAdded: 1 };
+  var WRITE_FNS = { saveItem: 1, addItem: 1, markGotIt: 1, setPosted: 1, uploadMedia: 1, saveBarcode: 1, setMainPhoto: 1, requestReward: 1, decideReward: 1, saveRewards: 1, savePointRules: 1, saveJobs: 1, completeJob: 1, requestJob: 1, approveJob: 1, rejectJob: 1, decidePhoto: 1, queueScan: 1, dismissScan: 1, markScanAdded: 1 };
   function tokenNow() { return S.kid ? '' : (LS.get('dadToken') || ''); }   // Son's mode never sends the PIN token
   function cacheKey(fn, args) { return 'c|' + fn + '|' + JSON.stringify(args) + '|' + (tokenNow() && dadUnlocked() ? 'p' : 'n'); }
   function hasPending(args) { return args.some(function (a) { return typeof a === 'string' && a.indexOf('pending:') === 0; }); }
@@ -2496,11 +2496,16 @@
           '<div class="row"><button class="btn green" data-act="rwYes" data-id="' + esc(x.id) + '">Yes (PIN)</button>' +
           '<button class="btn" data-act="rwNo" data-id="' + esc(x.id) + '">Not this time (PIN)</button></div></div>';
       }).join('');
+      var pendingJobs = (r.pendingJobs || []).map(function (x) {
+        return '<div class="rwItem" data-id="' + esc(x.id) + '" data-title="' + esc(x.title) + '" data-cost="' + esc(x.cost) + '"><div class="row"><b>' + esc(x.title) + '</b><span class="pill">+' + x.cost + '</span></div><small>' + esc(niceWhen(x.when)) + '</small>' +
+          '<div class="row"><button class="btn green" data-act="jobYes" data-id="' + esc(x.id) + '">Yes, approve (PIN)</button>' +
+          '<button class="btn" data-act="jobNo" data-id="' + esc(x.id) + '">Not this time (PIN)</button></div></div>';
+      }).join('');
       var jobRows = '';
       try {
         jobRows = rwArr(r.allJobs).map(function (x) {
           var doneBtn = x.doneToday ? '<span class="pill yel">Done today</span>' :
-            '<button class="btn green" data-act="jobDone" data-id="' + esc(x.id) + '">Done</button>';
+            (x.pending ? '<span class="pill yel">Waiting for Dad</span>' : '<span class="hint">Son ticks this when it\u2019s done</span>');
           return '<div class="rwItem" data-id="' + esc(x.id) + '"><p class="rwEditHead">Edit this job</p>' +
             '<label class="field">Job name <input type="text" class="jobTitle" data-id="' + esc(x.id) + '" value="' + esc(x.title) + '" maxlength="60" autocomplete="off"></label>' +
             '<label class="field">Points <input type="number" class="jobCost" data-id="' + esc(x.id) + '" value="' + x.cost + '" min="5" step="5"></label>' +
@@ -2530,9 +2535,9 @@
         (r.streak ? ' \u00B7 ' + r.streak + '-day streak' : '') + '</div>' +
         '<h2>Photos waiting</h2>' + (q ? '<div class="rwList">' + q + '</div>' : '<p class="hint">None waiting \u2014 you\u2019re all caught up.</p>') +
         '<h2>Reward asks</h2>' + (asks ? '<div class="rwList">' + asks + '</div>' : '<p class="hint">No asks waiting.</p>') +
-        (Array.isArray(r.allJobs) || Array.isArray(r.jobs) ? '' : '<div class="nudge">Jobs need a quick Code.gs update on the collection sheet (version 4.7). Until then, rewards still work as usual.</div>') +
-        (Array.isArray(r.allJobs) || Array.isArray(r.jobs) || jobRows ? ('<h2>Jobs</h2><p class="hint">Give each job a name and points. Tap Done when it\u2019s finished to award the points (once per job per day). Switch one off rather than deleting it. No money in the names, please.</p><div class="rwList" id="jobEdit">' + jobRows + '</div>' +
-        '<p><button type="button" class="rwAdd" data-act="jobAdd">+ Add job</button></p>') : '<div class="rwList" id="jobEdit" hidden></div>') +
+        '<h2>Jobs waiting</h2>' + (pendingJobs ? '<div class="rwList">' + pendingJobs + '</div>' : '<p class="hint">None waiting \u2014 you\u2019re all caught up.</p>') +
+        '<h2>Jobs</h2><p class="hint">Give each job a name and points. Son ticks a job when it\u2019s done; you approve it with your PIN and the points are added (once per job per day). Switch one off rather than deleting it. No money in the names, please.</p><div class="rwList" id="jobEdit">' + jobRows + '</div>' +
+        '<p><button type="button" class="rwAdd" data-act="jobAdd">+ Add job</button></p>' +
         '<h2>Rewards he can ask for</h2><p class="hint">This is the same live list he sees, from the App - Rewards sheet. Tick \u201COn the list\u201D to show or hide one. Switch one off rather than deleting it. No money in the names, please.</p><div class="rwList" id="rwEdit">' + (all || '<p class="hint">No active rewards yet.</p>') + '</div>' +
         (allOff ? '<h2>Off the list</h2><p class="hint">Hidden from him until you tick them back on. Nothing is deleted.</p><div class="rwList rwOffList" id="rwEditOff">' + allOff + '</div>' : '') +
         '<p><button type="button" class="rwAdd" data-act="rwAdd">+ Add reward</button></p>' +
@@ -2636,23 +2641,57 @@
     });
     return { list: list, bad: bad };
   }
-  function completeJobUI(id) {
+  function jobById(id) {
+    var r = RW || {};
+    var list = rwArr(r.jobs).concat(rwArr(r.allJobs)).concat(rwArr(r.pendingJobs));
+    for (var i = 0; i < list.length; i++) if (list[i] && (list[i].id === id || list[i].jobId === id || list[i].pendingId === id)) return list[i];
+    var el = document.querySelector('[data-id="' + String(id || '').replace(/"/g, '') + '"]');
+    if (!el) return null;
+    return { id: id, title: (el.querySelector('b') && el.querySelector('b').textContent) || el.getAttribute('data-title') || 'this job', cost: el.getAttribute('data-cost') || '', pendingId: el.getAttribute('data-pending') || '' };
+  }
+  function requestJobUI(id) {
     if (!id) return;
-    var row = document.querySelector('#jobEdit .rwItem[data-id="' + id.replace(/"/g, '') + '"]');
-    var title = (row && row.querySelector('.jobTitle') && row.querySelector('.jobTitle').value) || 'this job';
-    var cost = (row && row.querySelector('.jobCost') && row.querySelector('.jobCost').value) || '';
-    confirmSheet('Job done?', 'Award <b>' + esc(String(cost || '')) + '</b> points for <b>' + esc(title) + '</b>? Once a day for each job.', 'Yes, Done', 'Not yet').then(function (ok) {
+    var job = jobById(id) || { id: id, title: 'this job' };
+    if (job.pending || job.pendingId) { toast('Dad already has that one to look at.', 'good'); return; }
+    if (job.doneToday) { toast('Points for that job have already been given today.', 'good'); return; }
+    confirmSheet('Job done?', 'Tell Dad you\u2019ve finished <b>' + esc(job.title) + '</b>? He\u2019ll take a look, and you get the points when he says yes. Once a day for each job.', 'Yes, it\u2019s done', 'Not yet').then(function (ok) {
       if (!ok) return;
-      withDadPinThen(function () {
-        busy('Adding the points\u2026');
-        return call('completeJob', id, S.role).then(function (r) {
-          done(); RW = null;
-          toast((r && r.points ? ('+' + r.points + ' points') : 'Done') + (r && r.title ? ' \u2014 ' + r.title : '') + '.', 'good');
-          go('rewards', {}, true);
-        });
+      busy('Sending to Dad\u2026');
+      return call('requestJob', id, S.kid ? KID_ROLE : S.role).then(function (r) {
+        done(); RW = null;
+        toast('Asked! Dad will take a look' + (r && r.title ? ' \u2014 ' + r.title : '') + '.', 'good');
+        if (S.kid) { if (S.screen === 'kidRewards') go('kidRewards', {}, true); else go('kid', {}, true); }
+        else go('home', {}, true);
+      }, function (e) {
+        done();
+        if (/unknown action/i.test((e && e.message) || '')) toast('This needs the latest sheet update (v4.8) before Dad can approve jobs.', 'oops');
+        else oops(e);
       });
     }).catch(oops);
   }
+  function decideJobUI(reqId, yes) {
+    if (!reqId) return;
+    var job = jobById(reqId) || { title: 'this job' };
+    var wrap = sheet('Dad\u2019s PIN', '<p class="hint">Needed each time you ' + (yes ? 'approve' : 'say no to') + ' a job' + (job.title ? ' \u2014 ' + esc(job.title) : '') + '.</p><input id="rwPin" type="password" inputmode="numeric" maxlength="4" autocomplete="one-time-code" placeholder="\u2022\u2022\u2022\u2022">',
+      [{ label: yes ? 'Yes, approve' : 'No, not this time', value: 'go', cls: 'main' }, { label: 'Cancel', value: '' }]);
+    setTimeout(function () { var i = $('rwPin'); if (i) i.focus(); }, 50);
+    wrap.then(function (v) {
+      var pin = ($('rwPin') && $('rwPin').value) || '';
+      if (v !== 'go') return;
+      if (!/^\d{4}$/.test(pin)) { toast('That needs to be the 4-digit PIN.', 'oops'); return; }
+      busy(yes ? 'Approving\u2026' : 'Saving\u2026');
+      return call(yes ? 'approveJob' : 'rejectJob', reqId, pin, S.role).then(function (r) {
+        done(); RW = null;
+        toast(r && r.status === 'Approved' ? ('Approved' + (r.points ? ' \u2014 +' + r.points + ' points' : '') + (r.title ? ' for ' + r.title : '') + '.') : 'Okay, not this time. No points this time.', 'good');
+        if (S.screen === 'rewards') go('rewards', {}, true); else go('home', {}, true);
+      }, function (e) {
+        done();
+        if (/unknown action/i.test((e && e.message) || '')) toast('This needs the latest sheet update (v4.8).', 'oops');
+        else oops(e);
+      });
+    }).catch(oops);
+  }
+  function completeJobUI(id) { requestJobUI(id); }
   function collectRewardsForm() {
     var list = [], bad = '';
     document.querySelectorAll('#rwEdit .rwItem, #rwEditOff .rwItem').forEach(function (el) {
@@ -3104,25 +3143,27 @@ SCREENS.who = function () {
     });
   }
   function dadInboxHtml(r, scanN) {
-    var photos = 0, asks = 0;
+    var photos = 0, asks = 0, jobs = 0;
     if (isPriv() && r) {
       photos = (r.queue && r.queue.length) || r.waiting || 0;
       asks = (r.pendingRequests && r.pendingRequests.length) || 0;
+      jobs = (r.pendingJobs && r.pendingJobs.length) || 0;
     }
     var scans = scanN || 0;
-    var total = photos + asks + scans;
+    var total = photos + asks + jobs + scans;
     var h = '<div class="card dadInbox' + (total ? ' hasItems' : '') + '"><h2>Waiting on you</h2>';
     h += '<p class="funSub">' + (total ? 'A few things need the boss of the plant.' : 'All clear \u2014 nothing waiting. Nice work.') + '</p>';
     if (!isPriv()) {
-      h += '<p class="hint">Enter your PIN to see photos and reward asks waiting for you.</p>';
+      h += '<p class="hint">Enter your PIN to see photos, reward asks and jobs waiting for you.</p>';
     }
     h += '<div class="dadInboxGrid">';
     h += '<button type="button" class="dadBadge" data-act="go" data-to="rewards"><b>' + (isPriv() ? photos : '\uD83D\uDD12') + '</b><small>photos to approve</small></button>';
     h += '<button type="button" class="dadBadge" data-act="go" data-to="rewards"><b>' + (isPriv() ? asks : '\uD83D\uDD12') + '</b><small>reward asks</small></button>';
+    h += '<button type="button" class="dadBadge" data-act="go" data-to="rewards"><b>' + (isPriv() ? jobs : '\uD83D\uDD12') + '</b><small>jobs to approve</small></button>';
     h += '<button type="button" class="dadBadge" data-act="go" data-to="scanQueue"><b>' + scans + '</b><small>scan' + (scans === 1 ? '' : 's') + ' in the queue</small></button>';
     h += '</div>';
-    if (isPriv() && (photos || asks)) h += '<button type="button" class="btn main" data-act="go" data-to="rewards">Review approvals</button>';
-    if (scans) h += '<button type="button" class="btn' + ((photos || asks) ? '' : ' main') + '" data-act="go" data-to="scanQueue">Open scan queue</button>';
+    if (isPriv() && (photos || asks || jobs)) h += '<button type="button" class="btn main" data-act="go" data-to="rewards">Review approvals</button>';
+    if (scans) h += '<button type="button" class="btn' + ((photos || asks || jobs) ? '' : ' main') + '" data-act="go" data-to="scanQueue">Open scan queue</button>';
     return h + '</div>';
   }
   function paintDadInbox(r, scanN) {
@@ -4773,57 +4814,41 @@ SCREENS.who = function () {
     if (/garden|lawn|grass/.test(s)) return '\uD83C\uDF3F';
     return '\uD83E\uDDF9';
   }
-  var SEED_JOBS = [
-    { id: 'seed-room', title: 'Clean your room', cost: 50 },
-    { id: 'seed-dishes', title: 'Empty the dishwasher', cost: 50 }
-  ];
-  function jobsLive(r) {
-    return !!(r && (Array.isArray(r.jobs) || Array.isArray(r.allJobs)));
-  }
   function jobsForHome(r) {
-    if (jobsLive(r)) {
-      var list = rwArr(r.jobs);
-      if (!list.length) {
-        list = rwArr(r.allJobs).filter(function (j) {
-          return j && j.on !== false && j.active !== false && String(j.active || '').toLowerCase() !== 'no';
-        });
-      }
-      return { jobs: list, preview: false };
-    }
-    return { jobs: SEED_JOBS.slice(), preview: true };
+    return rwArr(r && r.jobs);
   }
   function jobsCardHtml(r, kid) {
-    var info = jobsForHome(r || {});
-    var jobs = info.jobs.slice();
+    if (kid == null) kid = !!S.kid;
+    var jobs = jobsForHome(r || {}).slice();
     jobs.sort(function (a, b) { return (a.cost - b.cost) || String(a.title || '').localeCompare(String(b.title || '')); });
-    var h = '<div class="jobCard' + (info.preview ? ' jobSoon' : '') + '"><h2>\uD83E\uDDF0 Jobs</h2>';
-    if (info.preview) {
-      h += '<p class="jobSub">Coming soon \u2014 these jobs will work once the latest sheet update (v4.7) is pasted. Until then, here is what\u2019s on the list.</p>';
-    } else if (kid) {
-      h += '<p class="jobSub">Jobs from Dad \u2014 he taps Done and you get the points</p>';
-    } else {
-      h += '<p class="jobSub">Tap Done when a job is finished to award the points (once a day).</p>';
-    }
+    var h = '<div class="jobCard"><h2>\uD83E\uDDF0 Jobs</h2>';
+    if (kid) h += '<p class="jobSub">Tap a job when it\u2019s done. Dad takes a look, and you get the points when he says yes.</p>';
+    else h += '<p class="jobSub">When Son ticks a job, it waits here for you to approve with your PIN.</p>';
     if (!jobs.length) {
       h += '<p class="hint">No jobs on the list just now.</p>';
     } else {
       h += '<div class="jobRows">';
       jobs.forEach(function (j) {
-        var sub = info.preview ? 'Coming soon' :
-          (j.doneToday ? (kid ? 'Done today \u2014 well done!' : 'Done today') :
-            (kid ? 'Dad taps Done when it\u2019s finished' : 'Waiting to be marked done'));
-        h += '<div class="jobRow">' +
+        var pending = !!(j.pending || j.pendingId);
+        var sub = j.doneToday ? (kid ? 'Done today \u2014 well done!' : 'Done today') :
+          (pending ? 'Waiting for Dad' : (kid ? 'Tap when you\u2019ve done it' : 'Waiting for Son to tick this'));
+        var cls = 'jobRow' + (pending ? ' waiting' : '') + (j.doneToday ? ' done' : '');
+        var tappable = !!(kid && !j.doneToday && !pending);
+        var tag = tappable ? 'button' : 'div';
+        var act = tappable ? ' data-act="jobAsk" data-id="' + esc(j.id) + '"' : (' data-id="' + esc(j.pendingId || j.id || '') + '" data-title="' + esc(j.title || '') + '" data-cost="' + esc(j.cost || '') + '"');
+        h += '<' + tag + (tag === 'button' ? ' type="button"' : '') + ' class="' + cls + '"' + act + '>' +
           '<span class="eIc">' + jobEmoji(j.title) + '</span>' +
           '<span class="eTxt"><b>' + esc(j.title) + '</b><small>' + sub + '</small></span>' +
           '<span class="ePts">+' + j.cost + '</span>';
-        if (!kid && !info.preview && isPriv() && j.id && !j.doneToday) {
-          h += '<button type="button" class="btn green small" data-act="jobDone" data-id="' + esc(j.id) + '">Done</button>';
+        if (!kid && pending && isPriv()) {
+          h += '<span class="jobActs"><button type="button" class="btn green small" data-act="jobYes" data-id="' + esc(j.pendingId || j.id) + '">Approve</button>' +
+            '<button type="button" class="btn small" data-act="jobNo" data-id="' + esc(j.pendingId || j.id) + '">No</button></span>';
         }
-        h += '</div>';
+        h += '</' + tag + '>';
       });
       h += '</div>';
     }
-    if (!kid && isPriv() && !info.preview) h += '<button type="button" class="btn small" data-act="go" data-to="rewards">Open jobs</button>';
+    if (!kid && isPriv()) h += '<button type="button" class="btn small" data-act="go" data-to="rewards">Open jobs</button>';
     return h + '</div>';
   }
   function paintJobs(r) {
@@ -5248,7 +5273,10 @@ SCREENS.who = function () {
       case 'rwSave': saveRewardsUI(); break;
       case 'rwAdd': addRewardRow(); break;
       case 'jobAdd': addJobRow(); break;
-      case 'jobDone': completeJobUI(el.getAttribute('data-id')); break;
+      case 'jobAsk': requestJobUI(el.getAttribute('data-id')); break;
+      case 'jobYes': decideJobUI(el.getAttribute('data-id'), true); break;
+      case 'jobNo': decideJobUI(el.getAttribute('data-id'), false); break;
+      case 'jobDone': requestJobUI(el.getAttribute('data-id')); break;
       case 'bdgAdd': addBadgeRow(); break;
       case 'bdgSave': saveBadgesUI(); break;
       case 'bdgRemove': (function () { var row = el.closest && el.closest('.bdgRow'); if (row && row.parentNode) row.parentNode.removeChild(row); var btn = $('bdgSaveBtn'); if (btn) { btn.textContent = 'Save'; btn.classList.remove('saved'); } })(); break;
@@ -5273,7 +5301,7 @@ SCREENS.who = function () {
   });
   $('stuckBtn').addEventListener('click', function () {
     if (!S.kid) return showHelp();
-    sheet('How it works', '<ul><li>\uD83E\uDDF8 <b>Our stuff</b>: tap anything to see it big or add a photo. Videos play right here in the app.</li><li>\uD83C\uDFA1 <b>Spin the wheel</b>: picks something we already own to film next (it prefers things not posted yet).</li><li>\uD83D\uDD01 <b>Doubles to swap</b>: things we have more than one of, with photos and no prices.</li><li>\u2705 <b>Set progress</b> and <b>On this day</b> show on Home when there is something to see.</li><li>\u2B50 <b>Hunt</b>: things we\u2019re looking for. Found one? Tap \u201CFound it!\u201D</li><li>\uD83D\uDCF7 <b>Scan</b>: point at a box\u2019s barcode to see if we\u2019ve got it. If it is new, you\u2019ll see the name if we can find it, then Dad can add it (his PIN, we stay in your mode) or save it for later.</li><li>\u2709\uFE0F <b>Letter from Dad</b>: how it all started. It pops up every now and then, and you can open it again any time.</li><li>\uD83D\uDCDD <b>Notes from Dad</b>: a little note every few visits, and all of them under Notes from Dad.</li><li>\uD83D\uDE04 <b>A daft joke</b>: a new one when you open this mode. Tap it for another.</li><li>\uD83C\uDF66 <b>What\u2019s our collection worth?</b>: swipe or tap to try ice creams, Dons tickets, tractors and lots more.</li><li>\u2B50 <b>My points</b>: earn points and ask Dad for rewards.</li><li>\uD83E\uDDF9 <b>Jobs</b>: jobs from Dad, like clean your room. He taps Done and you get the points.</li><li>No faces in photos - hands are fine.</li></ul>',
+    sheet('How it works', '<ul><li>\uD83E\uDDF8 <b>Our stuff</b>: tap anything to see it big or add a photo. Videos play right here in the app.</li><li>\uD83C\uDFA1 <b>Spin the wheel</b>: picks something we already own to film next (it prefers things not posted yet).</li><li>\uD83D\uDD01 <b>Doubles to swap</b>: things we have more than one of, with photos and no prices.</li><li>\u2705 <b>Set progress</b> and <b>On this day</b> show on Home when there is something to see.</li><li>\u2B50 <b>Hunt</b>: things we\u2019re looking for. Found one? Tap \u201CFound it!\u201D</li><li>\uD83D\uDCF7 <b>Scan</b>: point at a box\u2019s barcode to see if we\u2019ve got it. If it is new, you\u2019ll see the name if we can find it, then Dad can add it (his PIN, we stay in your mode) or save it for later.</li><li>\u2709\uFE0F <b>Letter from Dad</b>: how it all started. It pops up every now and then, and you can open it again any time.</li><li>\uD83D\uDCDD <b>Notes from Dad</b>: a little note every few visits, and all of them under Notes from Dad.</li><li>\uD83D\uDE04 <b>A daft joke</b>: a new one when you open this mode. Tap it for another.</li><li>\uD83C\uDF66 <b>What\u2019s our collection worth?</b>: swipe or tap to try ice creams, Dons tickets, tractors and lots more.</li><li>\u2B50 <b>My points</b>: earn points and ask Dad for rewards.</li><li>\uD83E\uDDF9 <b>Jobs</b>: tap a job (like clean your room) when it\u2019s done. Dad takes a look, and you get the points when he says yes.</li><li>No faces in photos - hands are fine.</li></ul>',
       [{ label: '\u21BB Refresh', value: 'refresh' }, { label: 'Got it!', value: 'ok', cls: 'main' }]).then(function (v) { if (v === 'refresh') { S.boot = null; thumbsRefresh(); go(S.screen || 'kid', S.params, true); } });
   });
   $('homeBtn').addEventListener('click', function () { if (S.kid) { S.history = []; go('kid', {}, true); return; } if (S.role) { S.history = []; go(S.screen === 'home' ? 'settings' : 'home', {}, true); } });
