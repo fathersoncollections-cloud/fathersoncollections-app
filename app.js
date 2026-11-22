@@ -1357,12 +1357,11 @@
         jokeHtml() +
         funWorthHtml() +
         '<div id="kidRewardsHome"></div>' +
+        '<div id="kidWays"></div>' +
         '<div class="kfeatures">' +
         '<button type="button" class="kfeature pinkL" data-act="go" data-to="kidBadges"><span>\uD83C\uDFC6</span><span class="kfeatTxt"><b>My badges</b><small id="kidBadgeN">see what you\u2019ve earned</small></span></button>' +
         '<div id="kidMissions"></div>' +
         '<button type="button" class="kfeature yel" data-act="go" data-to="kidRewards"><span>\u2B50</span><span class="kfeatTxt"><b>My points</b><small id="kidPtsN">earn rewards!</small></span></button>' +
-        '<div id="kidJobs"></div>' +
-        '<div id="kidEarn"></div>' +
         '</div>' +
         '<div id="kidOnThisDay"></div><div id="kidSetBars"></div>' +
         '<div class="ownCard card"><label class="ownLabel" for="kidSearch">\uD83D\uDD0D Have we got it?</label><input id="kidSearch" class="ownInput" type="search" placeholder="Type a name\u2026" autocomplete="off"><div id="kidOwnOut"></div></div>' +
@@ -1382,7 +1381,7 @@
       paintHomeFunAndMiles();
       checkNewBadges().then(function (B) { var n = B.filter(function (b) { return b.got; }).length; if ($('kidBadgeN')) $('kidBadgeN').textContent = n + ' badge' + (n === 1 ? '' : 's') + ' so far!'; paintMissions(B); }).catch(noop);
       loadHomeWanted().then(function (w) { var n = w.filter(function (x) { return kidSafe(x); }).length; if ($('kidHuntN')) $('kidHuntN').textContent = n + ' to find!'; });
-      loadRewards(true).then(function (r) { if ($('kidPtsN') && r) $('kidPtsN').textContent = r.balance + ' points \u00B7 ' + ((r.level && r.level.name) || ''); try { paintRewardsHome(r); } catch (eR) {} try { paintJobs(r); } catch (eJ) {} try { paintEarnPoints(r); } catch (eE) {} }).catch(function () { try { paintJobs({}); } catch (eJ2) {} });
+      loadRewards(true).then(function (r) { if ($('kidPtsN') && r) $('kidPtsN').textContent = r.balance + ' points \u00B7 ' + ((r.level && r.level.name) || ''); try { paintRewardsHome(r); } catch (eR) {} try { paintWaysToEarn(r); } catch (eJ) {} }).catch(function () { try { paintWaysToEarn({}); } catch (eJ2) {} });
       recordBadgeVisit();
       maybeShowLetter();
       bindFunSwipe();
@@ -2314,6 +2313,13 @@
       }).map(function (k) { return IDB.del(k); }));
     }, function () { return null; });
   }
+  function forgetAllRewardsCache() {
+    return IDB.keys().then(function (keys) {
+      return Promise.all((keys || []).filter(function (k) {
+        return String(k).indexOf('c|getRewards|') === 0;
+      }).map(function (k) { return IDB.del(k); }));
+    }, function () { return null; });
+  }
   function loadRewards(force) {
     if (RW && !force && navigator.onLine === false) return Promise.resolve(RW);
     RW = force ? null : RW;
@@ -2471,8 +2477,7 @@
         var photo = ptsVal(r, 'photo', 10);
         extra += (r.waiting ? '<div class="nudge">Dad is having a look at ' + r.waiting + ' photo' + (r.waiting === 1 ? '' : 's') + '. You get ' + photo + ' point' + (photo === 1 ? '' : 's') + ' for each one he says yes to.</div>' : '');
       } catch (eWait) { /* keep rewards visible */ }
-      try { extra += jobsCardHtml(r) || ''; } catch (eJobs) { /* live API may lack jobs until v4.7 */ }
-      try { extra += earnCardHtml(r) || ''; } catch (eEarn) { /* keep rewards visible */ }
+      try { extra += waysToEarnHtml(r, true) || ''; } catch (eJobs) { /* keep rewards visible */ }
       setMain(backBtn() + '<h1>\u2B50 My points</h1>' + rwLevelCard(r) + extra +
         '<h2>Rewards you can ask for</h2><div class="rwList">' +
         (rewards || '<p class="hint">Dad hasn\u2019t set any rewards yet.</p>') + '</div>' + reqs + recent);
@@ -2503,7 +2508,7 @@
       }).join('');
       var jobRows = '';
       try {
-        jobRows = rwArr(r.allJobs).map(function (x) {
+        jobRows = sortJobsList(rwArr(r.allJobs)).map(function (x) {
           var doneBtn = x.doneToday ? '<span class="pill yel">Done today</span>' :
             (x.pending ? '<span class="pill yel">Waiting for Dad</span>' : '<span class="hint">Son ticks this when it\u2019s done</span>');
           return '<div class="rwItem" data-id="' + esc(x.id) + '"><p class="rwEditHead">Edit this job</p>' +
@@ -2623,23 +2628,54 @@
       '<label class="field">Points <input type="number" class="jobCost" min="5" step="5" value="50"></label>' +
       '<label class="rwOnRow"><input type="checkbox" class="jobOn" checked> On the list</label>';
     box.appendChild(el);
+    sortJobEditor();
     var inp = el.querySelector('.jobTitle'); if (inp) inp.focus();
     var btn = $('rwSaveBtn'); if (btn) { btn.textContent = 'Save'; btn.classList.remove('saved'); }
   }
   function collectJobsForm() {
-    var list = [], bad = '';
+    var list = [], bad = '', incomplete = 0;
     document.querySelectorAll('#jobEdit .rwItem').forEach(function (el) {
       var titleEl = el.querySelector('.jobTitle'), costEl = el.querySelector('.jobCost');
       if (!titleEl || !costEl) return;
       var title = (titleEl.value || '').replace(/\s+/g, ' ').trim();
-      if (!title) return;
       var cost = parseInt(costEl.value, 10);
       var on = el.querySelector('.jobOn');
       var id = (titleEl.getAttribute('data-id') || el.getAttribute('data-id') || '');
+      if (!title) { if (id || (costEl.value || '').trim()) incomplete++; return; }
       if (/[\u00a3$\u20ac]|\b\d+\s*p\b|\bpounds?\b|\bquid\b|\bmoney\b|\bcash\b|\bdollars?\b|\beuros?\b|\bpence\b/i.test(title)) bad = 'Keep money out of job names.';
+      if (!(cost >= 5 && cost <= 100000)) bad = bad || 'Job points should be a whole number from 5 up.';
       list.push({ id: id, title: title, cost: cost, active: on ? on.checked : true });
     });
-    return { list: list, bad: bad };
+    return { list: list, bad: bad, incomplete: incomplete };
+  }
+  function sortJobsList(list) {
+    return (list || []).slice().sort(function (a, b) {
+      var ca = Number(a.cost) || 0, cb = Number(b.cost) || 0;
+      if (ca !== cb) return ca - cb;
+      return String(a.title || '').localeCompare(String(b.title || ''), 'en', { sensitivity: 'base' });
+    });
+  }
+  function sortJobEditor() {
+    var box = $('jobEdit'); if (!box) return;
+    var focus = document.activeElement;
+    var rows = Array.prototype.slice.call(box.querySelectorAll('.rwItem'));
+    var named = [], blank = [];
+    rows.forEach(function (el) {
+      var title = (((el.querySelector('.jobTitle') || {}).value) || '').replace(/\s+/g, ' ').trim();
+      (title ? named : blank).push(el);
+    });
+    named.sort(function (a, b) {
+      var ca = parseInt(((a.querySelector('.jobCost') || {}).value), 10) || 0;
+      var cb = parseInt(((b.querySelector('.jobCost') || {}).value), 10) || 0;
+      if (ca !== cb) return ca - cb;
+      var ta = (((a.querySelector('.jobTitle') || {}).value) || '').trim();
+      var tb = (((b.querySelector('.jobTitle') || {}).value) || '').trim();
+      return ta.localeCompare(tb, 'en', { sensitivity: 'base' });
+    });
+    named.concat(blank).forEach(function (el) { box.appendChild(el); });
+    if (focus && box.contains(focus) && typeof focus.focus === 'function') {
+      try { focus.focus(); } catch (eF) { /* ignore */ }
+    }
   }
   function jobById(id) {
     var r = RW || {};
@@ -2742,6 +2778,7 @@
     if (!form.list.length) { toast('Add at least one reward with a name.', 'oops'); return; }
     var jobs = collectJobsForm();
     if (jobs.bad) { toast(jobs.bad, 'oops'); return; }
+    if (jobs.incomplete) { toast('Give each new job a name before saving, or the jobs won\u2019t go through to Son.', 'oops'); return; }
     withDadPinThen(function () {
       busy('Saving\u2026');
       var p1 = call('saveRewards', form.list, S.role);
@@ -2750,14 +2787,19 @@
         if (/unknown action/i.test(msg)) return { skipped: true };
         throw e;
       });
-      var p3 = $('jobEdit') ? call('saveJobs', jobs.list, S.role).catch(function (e) {
+      var wantJobs = !!(!($('jobEdit') === null) || (jobs.list && jobs.list.length));
+      var p3 = wantJobs ? call('saveJobs', jobs.list, S.role).then(function (r) {
+        if (r && r.queued) throw new Error('Jobs couldn\u2019t reach the sheet just now. Check you\u2019ve got signal and tap Save again \u2014 they haven\u2019t gone through to Son yet.');
+        return r;
+      }, function (e) {
         var msg = String((e && e.message) || e || '');
         if (/unknown action/i.test(msg)) return { skipped: true };
-        throw e;
+        throw new Error((msg && !/TypeError|ReferenceError|didn\u2019t work/i.test(msg)) ? ('Jobs didn\u2019t save: ' + msg) : 'Jobs didn\u2019t save. Check you\u2019ve got signal and try again \u2014 they haven\u2019t gone through to Son yet.');
       }) : Promise.resolve(null);
       return Promise.all([p1, p2, p3]).then(function (res) {
         done();
         RW = null;
+        forgetAllRewardsCache().catch(noop);
         var saved = res[0] && res[0].rewards;
         if (saved && $('rwEdit')) {
           var titles = $('rwEdit').querySelectorAll('.rwTitle');
@@ -2765,13 +2807,36 @@
         }
         var savedJobs = res[2] && res[2].jobs;
         if (savedJobs && $('jobEdit')) {
-          var jt = $('jobEdit').querySelectorAll('.jobTitle');
-          savedJobs.forEach(function (r, i) { if (jt[i]) { jt[i].setAttribute('data-id', r.id); if (jt[i].closest('.rwItem')) jt[i].closest('.rwItem').setAttribute('data-id', r.id); } });
+          var used = {};
+          Array.prototype.forEach.call($('jobEdit').querySelectorAll('.rwItem'), function (el) {
+            var titleEl = el.querySelector('.jobTitle'), costEl = el.querySelector('.jobCost');
+            var id = (titleEl && titleEl.getAttribute('data-id')) || el.getAttribute('data-id') || '';
+            var title = ((titleEl && titleEl.value) || '').replace(/\s+/g, ' ').trim();
+            var cost = parseInt((costEl && costEl.value) || '', 10);
+            var match = null;
+            if (id) for (var i = 0; i < savedJobs.length; i++) if (savedJobs[i].id === id) { match = savedJobs[i]; break; }
+            if (!match) for (var j = 0; j < savedJobs.length; j++) if (!used[savedJobs[j].id] && savedJobs[j].title === title && savedJobs[j].cost === cost) { match = savedJobs[j]; break; }
+            if (!match) return;
+            used[match.id] = 1;
+            if (titleEl) titleEl.setAttribute('data-id', match.id);
+            el.setAttribute('data-id', match.id);
+          });
+          sortJobEditor();
+        }
+        if (res[2] && res[2].skipped) {
+          toast('Rewards saved, but the jobs didn\u2019t. They need the latest sheet update before they will show for Son.', 'oops');
+          return;
+        }
+        if (wantJobs && jobs.list.length && !(savedJobs && savedJobs.length)) {
+          toast('Rewards saved, but the jobs may not have gone through. Tap Save again.', 'oops');
+          return;
         }
         markRewardsSaved();
         if (res[1] && res[1].skipped) toast('Rewards saved. Points rules need the server update before they will stick.', 'good');
-        else if (res[2] && res[2].skipped) toast('Rewards saved. Jobs need the server update (v4.7) before they will stick.', 'good');
-        loadRewards(true);
+        loadRewards(true).then(function (r) {
+          if (S.screen === 'rewards') go('rewards', {}, true);
+          else if (S.screen === 'home' || S.screen === 'kid') paintWaysToEarn(r);
+        }, noop);
       }).catch(oops);
     }).catch(oops);
   }
@@ -3216,7 +3281,7 @@ SCREENS.who = function () {
         h += '<div id="dadInbox"></div>';
         h += '<div id="homeWeek"></div>';
         h += '<div id="homeRewards"></div>';
-        h += '<div id="homeJobs"></div>';
+        h += '<div id="homeWays"></div>';
         h += funWorthHtml();
         h += '<div id="homeOnThisDay"></div><div id="homeSetBars"></div>';
         h += dadWheelCardHtml();
@@ -3235,7 +3300,7 @@ SCREENS.who = function () {
           h += '<div class="warn">\uD83D\uDEA7 The sheet is still being tidied up, so a few bits (like ' + esc(b.missing.columns.concat(b.missing.tabs).join(', ')) + ') will appear once that\u2019s finished. Everything else works.</div>';
         }
         h += '<div id="homeRewards"></div>';
-        h += '<div id="homeJobs"></div>';
+        h += '<div id="homeWays"></div>';
         h += funWorthHtml();
         h += '<div id="homeOnThisDay"></div><div id="homeSetBars"></div>';
         h += '<div class="tiles">';
@@ -3281,9 +3346,9 @@ SCREENS.who = function () {
       loadHomeWanted();
       loadRewards(true).then(function (r) {
         paintRewardsHome(r);
-        paintJobs(r);
+        paintWaysToEarn(r);
         if (S.role === PRIV) paintDadInbox(r);
-      }).catch(function () { paintJobs({}); if (S.role === PRIV) paintDadInbox({}); });
+      }).catch(function () { paintWaysToEarn({}); if (S.role === PRIV) paintDadInbox({}); });
       if (isPriv()) {
         call('getValueSummary', S.role).then(function (vs) {
           if (vs && typeof vs.total === 'number' && S.screen === 'home') paintDadHero(vs);
@@ -4792,20 +4857,18 @@ SCREENS.who = function () {
       { kind: 'streak', icon: '\uD83D\uDD25', title: '3-day helper bonus', pts: ptsVal(r, 'streak', 15), desc: 'Help on 3 days in a row and get a bonus on top.' }
     ];
   }
-  function earnCardHtml(r) {
-    var h = '<div class="earnCard"><h2>How to earn points</h2><p class="earnSub">Your point jobs \u2014 tap one to have a go</p><div class="earnJobs">';
+  function collectionJobsHtml(r) {
+    var h = '<div class="earnJobs">';
     earnJobs(r).forEach(function (j) {
       h += '<button type="button" class="earnJob" data-act="earnGo" data-kind="' + esc(j.kind) + '">' +
         '<span class="eIc">' + j.icon + '</span>' +
         '<span class="eTxt"><b>' + esc(j.title) + '</b><small>' + esc(j.desc) + '</small></span>' +
         '<span class="ePts">' + ptsLabel(j.pts) + '</span></button>';
     });
-    return h + '</div></div>';
+    return h + '</div>';
   }
-  function paintEarnPoints(r) {
-    var el = $('kidEarn'); if (!el) return;
-    el.innerHTML = earnCardHtml(r || RW || {});
-  }
+  function earnCardHtml(r, kid) { return waysToEarnHtml(r, kid); }
+  function paintEarnPoints(r) { paintWaysToEarn(r); }
   function jobEmoji(t) {
     var s = String(t || '').toLowerCase();
     if (/dish/.test(s)) return '\uD83C\uDF74';
@@ -4817,51 +4880,57 @@ SCREENS.who = function () {
   function jobsForHome(r) {
     return rwArr(r && r.jobs);
   }
-  function jobsCardHtml(r, kid) {
-    if (kid == null) kid = !!S.kid;
-    var jobs = jobsForHome(r || {}).slice();
-    jobs.sort(function (a, b) { return (a.cost - b.cost) || String(a.title || '').localeCompare(String(b.title || '')); });
-    var h = '<div class="jobCard"><h2>\uD83E\uDDF0 Jobs</h2>';
-    if (kid) h += '<p class="jobSub">Tap a job when it\u2019s done. Dad takes a look, and you get the points when he says yes.</p>';
-    else h += '<p class="jobSub">When Son ticks a job, it waits here for you to approve with your PIN.</p>';
-    if (!jobs.length) {
-      h += '<p class="hint">No jobs on the list just now.</p>';
-    } else {
-      h += '<div class="jobRows">';
-      jobs.forEach(function (j) {
-        var pending = !!(j.pending || j.pendingId);
-        var sub = j.doneToday ? (kid ? 'Done today \u2014 well done!' : 'Done today') :
-          (pending ? 'Waiting for Dad' : (kid ? 'Tap when you\u2019ve done it' : 'Waiting for Son to tick this'));
-        var cls = 'jobRow' + (pending ? ' waiting' : '') + (j.doneToday ? ' done' : '');
-        var tappable = !!(kid && !j.doneToday && !pending);
-        var tag = tappable ? 'button' : 'div';
-        var act = tappable ? ' data-act="jobAsk" data-id="' + esc(j.id) + '"' : (' data-id="' + esc(j.pendingId || j.id || '') + '" data-title="' + esc(j.title || '') + '" data-cost="' + esc(j.cost || '') + '"');
-        h += '<' + tag + (tag === 'button' ? ' type="button"' : '') + ' class="' + cls + '"' + act + '>' +
-          '<span class="eIc">' + jobEmoji(j.title) + '</span>' +
-          '<span class="eTxt"><b>' + esc(j.title) + '</b><small>' + sub + '</small></span>' +
-          '<span class="ePts">+' + j.cost + '</span>';
-        if (!kid && pending && isPriv()) {
-          h += '<span class="jobActs"><button type="button" class="btn green small" data-act="jobYes" data-id="' + esc(j.pendingId || j.id) + '">Approve</button>' +
-            '<button type="button" class="btn small" data-act="jobNo" data-id="' + esc(j.pendingId || j.id) + '">No</button></span>';
-        }
-        h += '</' + tag + '>';
-      });
-      h += '</div>';
-    }
-    if (!kid && isPriv()) h += '<button type="button" class="btn small" data-act="go" data-to="rewards">Open jobs</button>';
+  function homeJobRowsHtml(r, kid) {
+    var jobs = sortJobsList(jobsForHome(r || {}));
+    if (!jobs.length) return '<p class="hint">No jobs on the list just now.</p>';
+    var h = '<div class="jobRows">';
+    jobs.forEach(function (j) {
+      var pending = !!(j.pending || j.pendingId);
+      var sub = j.doneToday ? (kid ? 'Done today \u2014 well done!' : 'Done today') :
+        (pending ? 'Waiting for Dad' : (kid ? 'Tap when you\u2019ve done it' : 'Waiting for Son to tick this'));
+      var cls = 'jobRow' + (pending ? ' waiting' : '') + (j.doneToday ? ' done' : '');
+      var tappable = !!(kid && !j.doneToday && !pending);
+      var tag = tappable ? 'button' : 'div';
+      var act = tappable ? ' data-act="jobAsk" data-id="' + esc(j.id) + '"' : (' data-id="' + esc(j.pendingId || j.id || '') + '" data-title="' + esc(j.title || '') + '" data-cost="' + esc(j.cost || '') + '"');
+      h += '<' + tag + (tag === 'button' ? ' type="button"' : '') + ' class="' + cls + '"' + act + '>' +
+        '<span class="eIc">' + jobEmoji(j.title) + '</span>' +
+        '<span class="eTxt"><b>' + esc(j.title) + '</b><small>' + sub + '</small></span>' +
+        '<span class="ePts">+' + j.cost + '</span>';
+      if (!kid && pending && isPriv()) {
+        h += '<span class="jobActs"><button type="button" class="btn green small" data-act="jobYes" data-id="' + esc(j.pendingId || j.id) + '">Approve</button>' +
+          '<button type="button" class="btn small" data-act="jobNo" data-id="' + esc(j.pendingId || j.id) + '">No</button></span>';
+      }
+      h += '</' + tag + '>';
+    });
     return h + '</div>';
   }
-  function paintJobs(r) {
-    var el = $('kidJobs') || $('homeJobs');
-    if (!el) return;
-    el.innerHTML = jobsCardHtml(r || RW || {}, !!S.kid);
+  function waysToEarnHtml(r, kid) {
+    if (kid == null) kid = !!S.kid;
+    var h = '<div class="waysCard"><h2>Ways to earn points</h2>';
+    h += '<h3>\uD83E\uDDF9 Jobs at home</h3>';
+    if (kid) h += '<p class="waysSub">Tap a job when it\u2019s done. Dad approves, then you get the points.</p>';
+    else h += '<p class="waysSub">Son ticks these. Approve or say no with your PIN.</p>';
+    h += homeJobRowsHtml(r, kid);
+    if (!kid && isPriv()) h += '<button type="button" class="btn small waysOpen" data-act="go" data-to="rewards">Open jobs</button>';
+    h += '<h3>\uD83D\uDCF8 Collection jobs</h3>';
+    if (kid) h += '<p class="waysSub">Tap one to go and do it. Photos still wait for Dad to say yes.</p>';
+    else h += '<p class="waysSub">These land automatically when Son does them. Tap to open that part of the app.</p>';
+    h += collectionJobsHtml(r);
+    return h + '</div>';
   }
+  function jobsCardHtml(r, kid) { return waysToEarnHtml(r, kid); }
+  function paintWaysToEarn(r) {
+    var el = $('kidWays') || $('homeWays');
+    if (!el) return;
+    el.innerHTML = waysToEarnHtml(r || RW || {}, !!S.kid);
+  }
+  function paintJobs(r) { paintWaysToEarn(r); }
   function runEarnJob(kind) {
-    if (kind === 'photo' || kind === 'update') go('kidStuff');
+    if (kind === 'photo' || kind === 'update') go(S.kid ? 'kidStuff' : 'collection');
     else if (kind === 'add') { S.add = null; go('add'); }
-    else if (kind === 'found') go('kidHunt');
-    else if (kind === 'streak') toast('Help today with a photo, a find or a new item to keep your streak going!', 'good');
-    else go('kidRewards');
+    else if (kind === 'found') go(S.kid ? 'kidHunt' : 'wanted');
+    else if (kind === 'streak') toast(S.kid ? 'Help today with a photo, a find or a new item to keep your streak going!' : 'A bonus is added when he helps on 3 days in a row.', 'good');
+    else go(S.kid ? 'kidRewards' : 'rewards');
   }
   function missionAction(b) {
     var left = Math.max(1, (b.need || 1) - (b.have || 0));
@@ -5145,6 +5214,11 @@ SCREENS.who = function () {
   }
 
   /* ---------------- events ---------------- */
+  document.addEventListener('change', function (e) {
+    var el = e.target;
+    if (!el || !el.closest || !el.closest('#jobEdit')) return;
+    if (el.classList && (el.classList.contains('jobCost') || el.classList.contains('jobTitle'))) sortJobEditor();
+  });
   document.addEventListener('click', function (e) {
     var tab = e.target.closest('[data-tab]');
     if (tab) { if (tab.getAttribute('data-tab') === 'scan') { openScanner({}); return; } S.history = []; var to = tab.getAttribute('data-tab'); if (to === 'add') layerPush(); go(to, {}, true); return; }
