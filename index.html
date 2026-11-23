@@ -819,8 +819,8 @@
   }
   .filmRow:active { transform: translateY(1px); box-shadow: 0 2px 0 var(--ink); }
   .filmRow .thumb { width: 56px; height: 56px; flex: 0 0 56px; border-radius: 12px; border: 3px solid var(--ink); overflow: hidden; position: relative; }
-  .filmTxt { flex: 1; min-width: 0; }
-  .filmTxt b { display: block; font-size: 16px; font-weight: 900; line-height: 1.15; }
+  .filmTxt { flex: 1; min-width: 0; overflow: hidden; }
+  .filmTxt b { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; overflow-wrap: anywhere; word-break: break-word; font-size: 16px; font-weight: 900; line-height: 1.15; }
   .filmTxt small { display: block; font-size: 12px; font-weight: 700; opacity: .8; line-height: 1.25; }
   .filmRow .filmBadge { font-size: 7px; padding: 1px 4px 1px 2px; right: 2px; bottom: 2px; }
   .filmRow .filmBadge img { width: 10px; height: 10px; }
@@ -1063,11 +1063,15 @@
   .setBarName b { font-size: 16px; }
   .setBarName small { font-size: 13px; font-weight: 800; white-space: nowrap; }
   .setBar { margin-top: 0; height: 14px; }
-  .onDayList { display: flex; flex-direction: column; gap: 6px; }
-  .onDayRow { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; font-family: inherit; color: inherit; background: var(--white); border: 3px solid var(--ink); border-radius: 14px; padding: 8px 10px; cursor: pointer; }
-  .onDayRow .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-  .onDayRow b { font-size: 15px; font-weight: 900; }
-  .onDayRow small { font-size: 13px; font-weight: 700; opacity: .85; }
+  .onDayList { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .onDayCard { overflow: hidden; }
+  .onDayRow { display: flex; align-items: center; gap: 10px; width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; overflow: hidden; text-align: left; font-family: inherit; color: inherit; background: var(--white); border: 3px solid var(--ink); border-radius: 14px; padding: 8px 10px; cursor: pointer; }
+  .onDayRow .thumb { width: 88px; height: 88px; flex: 0 0 88px; max-width: 88px; aspect-ratio: auto; border-radius: 12px; border: 3px solid var(--ink); overflow: hidden; position: relative; font-size: 22px; }
+  .onDayRow .thNone small, .onDayRow .thRetry small { display: none; }
+  .onDayRow .grow { flex: 1 1 auto; min-width: 0; overflow: hidden; display: flex; flex-direction: column; gap: 2px; }
+  .onDayRow b { font-size: 15px; font-weight: 900; line-height: 1.25; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; overflow-wrap: anywhere; word-break: break-word; }
+  .onDayRow small { font-size: 13px; font-weight: 700; opacity: .85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .onDayRow > span:last-child { flex: 0 0 auto; }
   .weekGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0 10px; }
   .weekCell { background: var(--white); border: 3px solid var(--ink); border-radius: 14px; padding: 10px 8px; text-align: center; }
   .weekCell b { display: block; font-size: 26px; line-height: 1; }
@@ -1451,7 +1455,7 @@
   (function () {
     'use strict';
     var API = "https://script.google.com/macros/s/AKfycbwSO6lF3RuWl0oihI0plwrpb2UKTVDG699nbfXpsiD9y-ZIlRxf44L4SZgw7whRzpeF/exec";
-    var VER = "v8f-20261122";
+    var VER = "v8g-20261123";
     // Plain fetch with no cookies, so Google's multi-account sign-in never gets involved.
     function post(fn, args) {
       return fetch(API, {

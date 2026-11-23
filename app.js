@@ -4705,7 +4705,25 @@ SCREENS.who = function () {
       consider(it, it.ph || it.photoDate, 'Filmed', true);
       consider(it, it.pd || it.purchaseDate, 'Bought', isPriv() && !S.kid);
     });
-    out.sort(function (a, b) { return b.year - a.year || String(a.it.name).localeCompare(String(b.it.name)); });
+    var byId = {}, order = { Filmed: 1, Got: 2, Bought: 3 };
+    out.forEach(function (row) {
+      var id = String((row.it && (row.it.id || row.it.key)) || row.it.name || '').toUpperCase();
+      if (!id) return;
+      var cur = byId[id];
+      if (!cur) { row.kinds = [row.kind]; byId[id] = row; return; }
+      if (row.year > cur.year) { row.kinds = [row.kind]; byId[id] = row; return; }
+      if (row.year === cur.year && cur.kinds.indexOf(row.kind) < 0) cur.kinds.push(row.kind);
+    });
+    out = Object.keys(byId).map(function (id) { return byId[id]; });
+    out.forEach(function (r) {
+      (r.kinds || [r.kind]).sort(function (a, b) { return (order[a] || 9) - (order[b] || 9); });
+      r.kind = (r.kinds || [r.kind]).join(' \u00B7 ');
+    });
+    out.sort(function (a, b) {
+      var ap = (a.it && a.it.folderId) ? 1 : 0, bp = (b.it && b.it.folderId) ? 1 : 0;
+      if (bp !== ap) return bp - ap;
+      return b.year - a.year || String(a.it.name).localeCompare(String(b.it.name));
+    });
     return out;
   }
   function onThisDayHtml(rows) {
