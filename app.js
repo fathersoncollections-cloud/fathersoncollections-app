@@ -1348,7 +1348,6 @@
     S.role = KID_ROLE; LS.set('role', KID_ROLE);
     S.boot = null; S.items = []; S.homeWanted = null; S.history = []; S.add = null;
     S.kidGreeting = true;
-    pickFunUnitRandom();
     pickJokeOnOpen();
     recordBadgeVisit();
     go('kid', {}, true);
@@ -2155,27 +2154,138 @@
     { id: "ps5", emoji: "🎮", art: "a", one: "PlayStation 5", many: "PlayStation 5s", gbp: 570 },
     { id: "ps5_pro", emoji: "🎮", art: "a", one: "PS5 Pro", many: "PS5 Pros", gbp: 790 },
     { id: "dualsense", emoji: "🎮", art: "a", one: "DualSense controller", many: "DualSense controllers", gbp: 55 },
-    { id: "ps5_game", emoji: "💿", art: "a", one: "PlayStation 5 game", many: "PlayStation 5 games", gbp: 60 }
+    { id: "ps5_game", emoji: "💿", art: "a", one: "PlayStation 5 game", many: "PlayStation 5 games", gbp: 60 },
+    { id: "donut", emoji: "🍩", art: "a", one: "donut", many: "donuts", gbp: 1.5 },
+    { id: "donut_box", emoji: "🍩", art: "a", one: "box of donuts", many: "boxes of donuts", gbp: 8 },
+    { id: "burger", emoji: "🍔", art: "a", one: "burger", many: "burgers", gbp: 6 },
+    { id: "chippy", emoji: "🍟", art: "a", one: "chippy tea", many: "chippy teas", gbp: 10 },
+    { id: "pizza", emoji: "🍕", art: "a", one: "pizza", many: "pizzas", gbp: 12 },
+    { id: "happy_meal", emoji: "🍟", art: "a", one: "Happy Meal", many: "Happy Meals", gbp: 4 },
+    { id: "milkshake", emoji: "🥤", art: "a", one: "milkshake", many: "milkshakes", gbp: 3 },
+    { id: "cinema_ticket", emoji: "🎟️", art: "a", one: "cinema ticket", many: "cinema tickets", gbp: 8 },
+    { id: "popcorn", emoji: "🍿", art: "a", one: "bucket of popcorn", many: "buckets of popcorn", gbp: 4 },
+    { id: "lego_mini", emoji: "🧱", art: "a", one: "LEGO minifigure", many: "LEGO minifigures", gbp: 4 },
+    { id: "lego_set", emoji: "🧱", art: "a", one: "LEGO set", many: "LEGO sets", gbp: 30 },
+    { id: "lego_big", emoji: "🧱", art: "a", one: "big LEGO set", many: "big LEGO sets", gbp: 80 },
+    { id: "nerf", emoji: "🔫", art: "a", one: "Nerf blaster", many: "Nerf blasters", gbp: 20 },
+    { id: "pokemon_pack", emoji: "⚡", art: "a", one: "Pokémon booster pack", many: "Pokémon booster packs", gbp: 4 },
+    { id: "comic", emoji: "📚", art: "a", one: "comic book", many: "comic books", gbp: 4 },
+    { id: "book", emoji: "📖", art: "a", one: "story book", many: "story books", gbp: 8 },
+    { id: "board_game", emoji: "🎲", art: "a", one: "board game", many: "board games", gbp: 20 },
+    { id: "jigsaw", emoji: "🧩", art: "a", one: "jigsaw puzzle", many: "jigsaw puzzles", gbp: 10 },
+    { id: "skateboard", emoji: "🛹", art: "a", one: "skateboard", many: "skateboards", gbp: 40 },
+    { id: "scooter", emoji: "🛴", art: "a", one: "scooter", many: "scooters", gbp: 50 },
+    { id: "bike", emoji: "🚲", art: "a", one: "bike", many: "bikes", gbp: 150 },
+    { id: "bowling", emoji: "🎳", art: "a", one: "game of bowling", many: "games of bowling", gbp: 8 },
+    { id: "soft_play", emoji: "🛝", art: "a", one: "soft play session", many: "soft play sessions", gbp: 10 },
+    { id: "zoo_ticket", emoji: "🦁", art: "a", one: "zoo ticket", many: "zoo tickets", gbp: 20 },
+    { id: "theme_park", emoji: "🎢", art: "a", one: "theme park ticket", many: "theme park tickets", gbp: 35 },
+    { id: "crazy_golf", emoji: "⛳", art: "a", one: "game of crazy golf", many: "games of crazy golf", gbp: 12 },
+    { id: "switch_game", emoji: "🎮", art: "a", one: "Nintendo Switch game", many: "Nintendo Switch games", gbp: 50 },
+    { id: "headphones", emoji: "🎧", art: "a", one: "pair of headphones", many: "pairs of headphones", gbp: 25 },
+    { id: "teddy", emoji: "🧸", art: "a", one: "teddy bear", many: "teddy bears", gbp: 12 },
+    { id: "rc_car", emoji: "🚗", art: "a", one: "remote-control car", many: "remote-control cars", gbp: 25 },
+    { id: "slime", emoji: "🟢", art: "a", one: "tub of slime", many: "tubs of slime", gbp: 4 },
+    { id: "sticker_pack", emoji: "🌟", art: "a", one: "sticker pack", many: "sticker packs", gbp: 2 },
+    { id: "trampoline", emoji: "🤸", art: "a", one: "garden trampoline", many: "garden trampolines", gbp: 150 }
   ];
 
   function funTotalNum() {
     var t = S.boot && S.boot.funTotal;
     return t && typeof t.total === 'number' && isFinite(t.total) ? t.total : null;
   }
-  function funUnitIndex() {
-    var i = parseInt(LS.get('kidFunUnit') || '0', 10);
-    if (!(i >= 0 && i < FUN_UNITS.length)) i = 0;
-    return i;
+  function funUnitById(id) {
+    for (var i = 0; i < FUN_UNITS.length; i++) if (FUN_UNITS[i].id === id) return FUN_UNITS[i];
+    return FUN_UNITS[0];
   }
-  function pickFunUnitRandom() {
-    if (!FUN_UNITS.length) return;
-    LS.set('kidFunUnit', String(Math.floor(Math.random() * FUN_UNITS.length)));
+  function funGroupOf(id) {
+    if (/^(ps5|dualsense)/.test(id)) return 'ps5';
+    if (/^(vbucks_|battle_pass)/.test(id)) return 'fortnite';
+    if (/^(hotwheels|hw_)/.test(id)) return 'hotwheels';
+    if (/^(match_|signed_card|graded_card)/.test(id)) return 'cards';
+    if (/^(mf_|pedal_tractor)/.test(id)) return 'mf';
+    if (/^(footy_|football|signed_shirt)/.test(id)) return 'football';
+    if (/^(choc_bar|haribo|teacake|teacake_box|caramel_wafer|tablet|pickmix|lolly|share_bag|icecream|donut|donut_box)/.test(id)) return 'sweets';
+    if (/^(donkey|donkey_toy|donkey_feed)$/.test(id)) return 'donkey';
+    if (/^(rescue_dog|puppy|labrador|dog_treats|dog_food|dog_bed)$/.test(id)) return 'dog';
+    if (/^(rescue_cat|kitten|cat_treats|cat_tree)$/.test(id)) return 'cat';
+    if (/^(highland_cow|cow_toy)$/.test(id)) return 'cow';
+    if (/^(lego_mini|lego_set|lego_big)$/.test(id)) return 'lego';
+    if (/^(cinema_ticket|popcorn)$/.test(id)) return 'cinema';
+    if (/^(burger|chippy|pizza|happy_meal|milkshake)$/.test(id)) return 'food';
+    if (/^(skateboard|scooter|bike)$/.test(id)) return 'wheels';
+    return id;
   }
-  function setFunUnitIndex(i, dir) {
-    var n = FUN_UNITS.length;
-    i = ((i % n) + n) % n;
-    LS.set('kidFunUnit', String(i));
-    paintFunWorth(dir || 0);
+  function shuffleFunIds_(arr) {
+    for (var i = arr.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+    }
+    return arr;
+  }
+  function allFunIds_() { return FUN_UNITS.map(function (u) { return u.id; }); }
+  function funIdsSig_() { return allFunIds_().slice().sort().join('|'); }
+  function loadFunBag_() {
+    var empty = { bag: [], last: '', sig: '' };
+    try {
+      var raw = LS.get('kidFunBag');
+      var o = raw ? JSON.parse(raw) : null;
+      if (!o || typeof o !== 'object') o = empty;
+      var valid = {};
+      allFunIds_().forEach(function (id) { valid[id] = true; });
+      var bag = Array.isArray(o.bag) ? o.bag.filter(function (id) { return valid[id]; }) : [];
+      var last = valid[o.last] ? o.last : '';
+      if (!last) {
+        var old = parseInt(LS.get('kidFunUnit') || '', 10);
+        if (old >= 0 && old < FUN_UNITS.length) last = FUN_UNITS[old].id;
+      }
+      return { bag: bag, last: last, sig: String(o.sig || '') };
+    } catch (e) { return empty; }
+  }
+  function saveFunBag_(st) {
+    LS.set('kidFunBag', JSON.stringify({ bag: st.bag, last: st.last, sig: funIdsSig_() }));
+  }
+  function refillFunBag_(last) {
+    var ids = shuffleFunIds_(allFunIds_());
+    if (last && ids.length > 1 && ids[0] === last) {
+      var k = 1 + Math.floor(Math.random() * (ids.length - 1));
+      var tmp = ids[0]; ids[0] = ids[k]; ids[k] = tmp;
+    }
+    if (last && ids.length > 1 && funGroupOf(ids[0]) === funGroupOf(last)) {
+      for (var i = 1; i < ids.length; i++) {
+        if (funGroupOf(ids[i]) !== funGroupOf(last)) {
+          var sw = ids[0]; ids[0] = ids[i]; ids[i] = sw;
+          break;
+        }
+      }
+    }
+    return ids;
+  }
+  function currentFunUnit() {
+    var st = loadFunBag_();
+    if (st.last && funUnitById(st.last)) return funUnitById(st.last);
+    return nextFunUnit();
+  }
+  function nextFunUnit() {
+    if (!FUN_UNITS.length) return null;
+    var st = loadFunBag_();
+    if (!st.bag.length || st.sig !== funIdsSig_()) st.bag = refillFunBag_(st.last);
+    var pick = st.bag.shift();
+    var guard = 0;
+    while (pick && st.bag.length && guard++ < FUN_UNITS.length) {
+      var sameItem = pick === st.last;
+      var sameGroup = st.last && funGroupOf(pick) === funGroupOf(st.last);
+      if (!sameItem && !sameGroup) break;
+      st.bag.push(pick);
+      pick = st.bag.shift();
+    }
+    if (!pick || pick === st.last) {
+      st.bag = refillFunBag_(st.last);
+      pick = st.bag.shift() || (FUN_UNITS[0] && FUN_UNITS[0].id);
+    }
+    st.last = pick;
+    saveFunBag_(st);
+    return funUnitById(pick);
   }
   function funPhrase(n, u) {
     var art = u.art || 'a', one = u.one, many = u.many;
@@ -2197,7 +2307,7 @@
   function funSlideInner() {
     var total = funTotalNum();
     if (total == null) return '';
-    var u = FUN_UNITS[funUnitIndex()];
+    var u = currentFunUnit();
     var count = u.gbp ? total / u.gbp : 0;
     var nShow = count >= 1 ? Math.min(8, Math.max(1, Math.round(Math.min(count, 8)))) : 1;
     var em = '';
@@ -2207,6 +2317,7 @@
   }
   function funWorthHtml() {
     if (funTotalNum() == null) return '';
+    nextFunUnit();
     return '<div class="funWorth" id="funWorth">' +
       '<p class="funLabel">What\u2019s our collection worth?</p>' +
       '<div class="funViewport"><div class="funSlide">' + funSlideInner() + '</div></div>' +
@@ -2253,7 +2364,8 @@
     if (funTotalNum() == null) return;
     dir = dir || 1;
     if (FUN_ANIM.busy) return;
-    setFunUnitIndex(funUnitIndex() + dir, dir);
+    nextFunUnit();
+    paintFunWorth(dir);
     if (S.kid) bumpKid('kidWorthSwipes');
   }
   function bindFunSwipe() {
@@ -5731,7 +5843,7 @@ SCREENS.who = function () {
   /* ---------------- start ---------------- */
   loadSavedThumbs();
   IDB.qAll().then(function (q) { NET.queueLen = q.length; renderNetBar(); if (q.length && navigator.onLine !== false) syncQueue(); }, noop);
-  if (S.kid) { S.role = KID_ROLE; S.kidGreeting = true; pickFunUnitRandom(); pickJokeOnOpen(); go('kid', {}, true); }
+  if (S.kid) { S.role = KID_ROLE; S.kidGreeting = true; pickJokeOnOpen(); go('kid', {}, true); }
   else if (!LS.get('seenGuide')) go('guide', { i: 0 }, true);
   else if (!S.role) go('who', {}, true);
   else if (S.role === PRIV && THEME.needsPin && !dadUnlocked()) askDadPin(S.role);
