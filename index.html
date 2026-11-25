@@ -654,6 +654,7 @@
   .missionRow.tier-elite { border-left-color: #8A2BE2; } .missionRow.tier-elite .mBar i { background: #8A2BE2; }
   .missionRow.tier-champion { border-left-color: #E4572E; } .missionRow.tier-champion .mBar i { background: #E4572E; }
   .missionRow.tier-unreal { border-left-color: #7CFFCB; } .missionRow.tier-unreal .mBar i { background: linear-gradient(90deg, #7CFFCB, #C77DFF); }
+  .missionRow.tier-mythic { border-left-color: #FED90F; } .missionRow.tier-mythic .mBar i { background: linear-gradient(90deg, #13294B, #FED90F, #5B21B6); }
   @keyframes missionPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(254,217,15,.0); } 40% { box-shadow: 0 0 0 8px rgba(254,217,15,.55); } }
   .missionPulse { animation: missionPulse .7s ease-out 2; border-radius: 16px; }
   @media (prefers-reduced-motion: reduce) { .missionPulse { animation: none; } }
@@ -837,10 +838,14 @@
 
 
   .badgeSum { margin-bottom: 14px; }
-  .badgeTier { margin: 16px 0 10px; font-size: 18px; font-weight: 900; display: flex; align-items: center; gap: 8px; }
+  .badgeJump { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
+  .badgeJumpBtn { display: inline-flex; align-items: center; gap: 6px; font: inherit; font-weight: 800; font-size: 12px; line-height: 1.2; padding: 6px 8px; border: 2px solid var(--ink); border-radius: 999px; background: #fff; color: var(--ink); }
+  .badgeJumpBtn .tPip { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--ink); display: inline-block; flex: 0 0 auto; }
+  .badgeTier { margin: 16px 0 10px; font-size: 18px; font-weight: 900; display: flex; align-items: center; gap: 8px; scroll-margin-top: 12px; }
   .badgeTier .tPip { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--ink); display: inline-block; }
-  .badgeWall { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
-  .badge { background: #d8dee6; border: 3px solid #9aa7b8; border-radius: 18px; padding: 12px 8px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 2px; color: #5b6778; filter: grayscale(.85); opacity: .78; }
+  .badgeWall { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  @media (min-width: 700px) { .badgeWall { grid-template-columns: repeat(3, 1fr); } }
+  .badge { background: #d8dee6; border: 3px solid #9aa7b8; border-radius: 18px; padding: 10px 6px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 2px; color: #5b6778; filter: grayscale(.85); opacity: .78; }
   .badge .bIc { font-size: 36px; filter: grayscale(1); opacity: .55; }
   .badge b { font-size: 15px; line-height: 1.15; } .badge small { font-size: 12px; line-height: 1.25; } .badge em { font-style: normal; font-weight: 900; font-size: 12px; }
   .badge .bTier { font-size: 10px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; opacity: .8; }
@@ -856,12 +861,16 @@
   .badge.tier-elite.got { background: linear-gradient(180deg, #E8C8FF, #8A2BE2); color: #1a0a2a; box-shadow: 0 4px 0 #4A157A, 0 0 22px rgba(138,43,226,.7); }
   .badge.tier-champion.got { background: linear-gradient(180deg, #FF8FAB, #E4572E); box-shadow: 0 4px 0 #8A1F10, 0 0 22px rgba(228,87,46,.75); }
   .badge.tier-unreal.got { background: linear-gradient(135deg, #7CFFCB, #70CCF5, #C77DFF, #FED90F); box-shadow: 0 4px 0 #13294B, 0 0 26px rgba(199,125,255,.9); animation: unrealGlow 2.4s ease-in-out infinite; }
+  .badge.tier-mythic.got { background: linear-gradient(135deg, #13294B, #5B21B6, #FED90F, #70CCF5); color: #fff; box-shadow: 0 4px 0 #0A1630, 0 0 28px rgba(254,217,15,.85); animation: mythicGlow 2.2s ease-in-out infinite; }
+  .badge.tier-mythic.got b, .badge.tier-mythic.got small, .badge.tier-mythic.got em, .badge.tier-mythic.got .bTier { color: #fff; }
   .tPip.bronze { background: #D08A3A; } .tPip.silver { background: #C5CED8; } .tPip.gold { background: #FED90F; }
   .tPip.platinum { background: #E8EEF5; } .tPip.diamond { background: #3EC3F0; } .tPip.elite { background: #8A2BE2; }
   .tPip.champion { background: #E4572E; } .tPip.unreal { background: linear-gradient(135deg, #7CFFCB, #C77DFF); }
+  .tPip.mythic { background: linear-gradient(135deg, #13294B, #FED90F, #5B21B6); }
   @keyframes unrealGlow { 50% { box-shadow: 0 4px 0 #13294B, 0 0 34px rgba(124,255,203,.95); } }
+  @keyframes mythicGlow { 50% { box-shadow: 0 4px 0 #0A1630, 0 0 36px rgba(254,217,15,.95); } }
   @media (prefers-reduced-motion: reduce) {
-    .badge.tier-unreal.got, .badge.got .bIc { animation: none; }
+    .badge.tier-unreal.got, .badge.tier-mythic.got, .badge.got .bIc { animation: none; }
   }
   .bdgEdit .rwItem { margin-bottom: 0; }
 
@@ -1455,7 +1464,7 @@
   (function () {
     'use strict';
     var API = "https://script.google.com/macros/s/AKfycbwSO6lF3RuWl0oihI0plwrpb2UKTVDG699nbfXpsiD9y-ZIlRxf44L4SZgw7whRzpeF/exec";
-    var VER = "v8h-20261125";
+    var VER = "v8i-20261125";
     // Plain fetch with no cookies, so Google's multi-account sign-in never gets involved.
     function post(fn, args) {
       return fetch(API, {

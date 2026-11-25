@@ -2955,6 +2955,7 @@
       busy('Sending to Dad\u2026');
       return call('requestJob', id, S.kid ? KID_ROLE : S.role).then(function (r) {
         done(); RW = null;
+        bumpKid('kidJobs');
         toast('Asked! Dad will take a look' + (r && r.title ? ' \u2014 ' + r.title : '') + '.', 'good');
         if (S.kid) { if (S.screen === 'kidRewards') go('kidRewards', {}, true); else go('kid', {}, true); }
         else go('home', {}, true);
@@ -4924,6 +4925,7 @@ SCREENS.who = function () {
   function spinTheWheel() {
     var pool = wheelPool();
     if (!pool.length) { toast('Nothing to film yet \u2014 add an item first.', 'oops'); return; }
+    bumpKid('kidSpins');
     var pick = pool[Math.floor(Math.random() * pool.length)];
     var el = $('funWheel'), btn = $('wheelBtn'), out = $('wheelOut');
     var slices = el ? (+el.getAttribute('data-slices') || 8) : 8;
@@ -5026,8 +5028,8 @@ SCREENS.who = function () {
   function catIcon(r) { for (var i = 0; i < CAT_ICONS.length; i++) if (CAT_ICONS[i][0].test(r)) return CAT_ICONS[i][1]; return '\u2B50'; }
   function kidCount(k) { return +LS.get(k) || 0; }
   function bumpKid(k, n) { LS.set(k, String(kidCount(k) + (n || 1))); }
-  var BADGE_TIER_ORDER = ['bronze', 'silver', 'gold', 'platinum', 'diamond', 'elite', 'champion', 'unreal'];
-  var BADGE_TIER_NAME = { bronze: 'Bronze', silver: 'Silver', gold: 'Gold', platinum: 'Platinum', diamond: 'Diamond', elite: 'Elite', champion: 'Champion', unreal: 'Unreal' };
+  var BADGE_TIER_ORDER = ['bronze', 'silver', 'gold', 'platinum', 'diamond', 'elite', 'champion', 'unreal', 'mythic'];
+  var BADGE_TIER_NAME = { bronze: 'Bronze', silver: 'Silver', gold: 'Gold', platinum: 'Platinum', diamond: 'Diamond', elite: 'Elite', champion: 'Champion', unreal: 'Unreal', mythic: 'Mythic' };
   var BADGE_CATALOG = [
     { id: 'drop-in', tier: 'bronze', emoji: '\uD83C\uDF91', name: 'First Drop-In', goal: 'Open Son\u2019s mode for the first time.', rule: { type: 'starter' } },
     { id: 'wee-welcome', tier: 'bronze', emoji: '\uD83D\uDC4B', name: 'Wee Welcome', goal: 'Say hi on the home screen.', rule: { type: 'starter' } },
@@ -5078,8 +5080,63 @@ SCREENS.who = function () {
     { id: 'champ-hunter', tier: 'champion', emoji: '\uD83D\uDD25', name: 'Champion Hunter', goal: 'Tick 80 items off the hunt list.', rule: { type: 'found', n: 80 } },
     { id: 'champ-points', tier: 'champion', emoji: '\uD83D\uDC51', name: 'Champion Points', goal: 'Earn 1,200 points.', rule: { type: 'points', n: 1200 } },
     { id: 'unreal-collector', tier: 'unreal', emoji: '\uD83D\uDE80', name: 'Unreal Collector', goal: 'Add 200 new items to the collection.', rule: { type: 'items', n: 200 } },
-    { id: 'unreal-legend', tier: 'unreal', emoji: '\u2728', name: 'Unreal Legend', goal: 'Earn 2,000 points.', rule: { type: 'points', n: 2000 } }
+    { id: 'unreal-legend', tier: 'unreal', emoji: '\u2728', name: 'Unreal Legend', goal: 'Earn 2,000 points.', rule: { type: 'points', n: 2000 } },
+    { id: 'woohoo-wheel', tier: 'bronze', emoji: '\uD83C\uDFA1', name: 'Woo-Hoo! Wheel', goal: 'Spin the wheel once.', rule: { type: 'spins', n: 1 } },
+    { id: 'search-scout', tier: 'bronze', emoji: '\uD83D\uDD0D', name: 'Can I Keep Him?', goal: 'Search for something 5 times.', rule: { type: 'searches', n: 5 } },
+    { id: 'laugh-track', tier: 'bronze', emoji: '\uD83C\uDFAD', name: 'Laugh-Track Kid', goal: 'Tap the joke card 5 times.', rule: { type: 'jokes', n: 5 } },
+    { id: 'donut-dipper', tier: 'bronze', emoji: '\uD83C\uDF69', name: 'Donut Dipper', goal: 'Swipe or tap the worth card 5 times.', rule: { type: 'swipes', n: 5 } },
+    { id: 'couch-club', tier: 'bronze', emoji: '\uD83D\uDECB\uFE0F', name: 'Couch Club', goal: 'Have 10 things in Our Stuff.', rule: { type: 'owned', n: 10 } },
+    { id: 'beep-scan', tier: 'bronze', emoji: '\uD83D\uDCF7', name: 'Beep Beep Scan', goal: 'Scan 3 boxes.', rule: { type: 'scans', n: 3 } },
+    { id: 'jobs-done', tier: 'bronze', emoji: '\uD83E\uDD73', name: 'Job\u2019s Done, Man', goal: 'Tell Dad you\u2019ve finished 1 job.', rule: { type: 'jobs', n: 1 } },
+    { id: 'letter-looper', tier: 'bronze', emoji: '\u2709\uFE0F', name: 'Letter Looper', goal: 'Open a note or the letter from Dad 3 times.', rule: { type: 'reads', n: 3 } },
+    { id: 'threepeat', tier: 'bronze', emoji: '\uD83D\uDCC6', name: 'Threepeat', goal: 'Visit on 3 different days.', rule: { type: 'visits', n: 3 } },
+    { id: 'double-snap', tier: 'bronze', emoji: '\uD83D\uDCF8', name: 'Double Snap', goal: 'Add 2 photos in Son\u2019s mode.', rule: { type: 'photos', n: 2 } },
+    { id: 'homer-hero', tier: 'silver', emoji: '\uD83C\uDF69', name: 'Homer Hero', goal: 'Have 5 Homer things in Our Stuff.', rule: { type: 'char', who: 'Homer', n: 5 } },
+    { id: 'bart-buddy', tier: 'silver', emoji: '\uD83D\uDEF9', name: 'Bart Buddy', goal: 'Have 5 Bart things in Our Stuff.', rule: { type: 'char', who: 'Bart', n: 5 } },
+    { id: 'funko-fanatic', tier: 'silver', emoji: '\uD83E\uDDF8', name: 'Funko Fanatic', goal: 'Have 5 Funko things in Our Stuff.', rule: { type: 'match', re: 'funko', n: 5 } },
+    { id: 'pez-pal', tier: 'silver', emoji: '\uD83C\uDF6C', name: 'PEZ Pal', goal: 'Have 3 PEZ things in Our Stuff.', rule: { type: 'match', re: '\\bpez\\b', n: 3 } },
+    { id: 'spin-cycle', tier: 'silver', emoji: '\uD83C\uDFA1', name: 'Spin Cycle', goal: 'Spin the wheel 5 times.', rule: { type: 'spins', n: 5 } },
+    { id: 'helping-hands', tier: 'silver', emoji: '\uD83D\uDC4B', name: 'Helping Hands', goal: 'Tell Dad you\u2019ve finished 3 jobs.', rule: { type: 'jobs', n: 3 } },
+    { id: 'on-a-roll', tier: 'silver', emoji: '\uD83D\uDD25', name: 'On a Roll', goal: 'Keep a 3-day helper streak.', rule: { type: 'streak', n: 3 } },
+    { id: 'photo-album', tier: 'silver', emoji: '\uD83D\uDDBC\uFE0F', name: 'Photo Album', goal: 'Have photos on 10 of our things.', rule: { type: 'photod', n: 10 } },
+    { id: 'aisle-hopper', tier: 'silver', emoji: '\uD83D\uDED2', name: 'Aisle Hopper', goal: 'Have things in 4 different categories.', rule: { type: 'ranges', n: 4 } },
+    { id: 'lisa-legend', tier: 'gold', emoji: '\uD83C\uDFB7', name: 'Lisa Legend', goal: 'Have 5 Lisa things in Our Stuff.', rule: { type: 'char', who: 'Lisa', n: 5 } },
+    { id: 'marge-master', tier: 'gold', emoji: '\uD83D\uDC99', name: 'Marge Master', goal: 'Have 5 Marge things in Our Stuff.', rule: { type: 'char', who: 'Marge', n: 5 } },
+    { id: 'hey-hey-krusty', tier: 'gold', emoji: '\uD83E\uDD21', name: 'Hey Hey Krusty', goal: 'Have 5 Krusty things in Our Stuff.', rule: { type: 'char', who: 'Krusty', n: 5 } },
+    { id: 'brick-builder', tier: 'gold', emoji: '\uD83E\uDDF1', name: 'Brick Builder', goal: 'Have 3 LEGO things in Our Stuff.', rule: { type: 'match', re: '\\blego\\b', n: 3 } },
+    { id: 'posted-it', tier: 'gold', emoji: '\uD83D\uDCE3', name: 'Posted It!', goal: 'Have 5 things already posted.', rule: { type: 'posted', n: 5 } },
+    { id: 'wheel-of-yellow', tier: 'gold', emoji: '\uD83C\uDFA0', name: 'Wheel of Yellow', goal: 'Spin the wheel 15 times.', rule: { type: 'spins', n: 15 } },
+    { id: 'pocket-points', tier: 'gold', emoji: '\u2B50', name: 'Pocketful of Points', goal: 'Earn 150 points in total.', rule: { type: 'earned', n: 150 } },
+    { id: 'category-kingpin', tier: 'gold', emoji: '\uD83E\uDDED', name: 'Category Kingpin', goal: 'Have things in 8 different categories.', rule: { type: 'ranges', n: 8 } },
+    { id: 'maggie-mate', tier: 'platinum', emoji: '\uD83C\uDF7C', name: 'Maggie Mate', goal: 'Have 5 Maggie things in Our Stuff.', rule: { type: 'char', who: 'Maggie', n: 5 } },
+    { id: 'excellent-burns', tier: 'platinum', emoji: '\uD83D\uDC74', name: 'Excellent!', goal: 'Have 5 Mr Burns things in Our Stuff.', rule: { type: 'char', who: 'Burns', n: 5 } },
+    { id: 'okily-dokily', tier: 'platinum', emoji: '\uD83D\uDE4F', name: 'Okily Dokily', goal: 'Have 3 Flanders things in Our Stuff.', rule: { type: 'char', who: 'Flanders', n: 3 } },
+    { id: 'up-milhouse', tier: 'platinum', emoji: '\uD83D\uDC53', name: 'Everything\u2019s Coming Up Milhouse', goal: 'Have 3 Milhouse things in Our Stuff.', rule: { type: 'char', who: 'Milhouse', n: 3 } },
+    { id: 'chase-crew', tier: 'platinum', emoji: '\uD83D\uDC8E', name: 'Chase Crew', goal: 'Have 5 rare or limited things in Our Stuff.', rule: { type: 'rare', n: 5 } },
+    { id: 'chore-core', tier: 'platinum', emoji: '\uD83E\uDDF9', name: 'Chore Core', goal: 'Tell Dad you\u2019ve finished 10 jobs.', rule: { type: 'jobs', n: 10 } },
+    { id: 'series-stacker', tier: 'platinum', emoji: '\uD83D\uDCDC', name: 'Series Stacker', goal: 'Have things from 10 different series.', rule: { type: 'series', n: 10 } },
+    { id: 'ralph-helping', tier: 'diamond', emoji: '\uD83D\uDE00', name: 'I\u2019m Helping!', goal: 'Have 3 Ralph things in Our Stuff.', rule: { type: 'char', who: 'Ralph', n: 3 } },
+    { id: 'moes-regular', tier: 'diamond', emoji: '\uD83C\uDF7A', name: 'Moe\u2019s Regular', goal: 'Have 3 Moe things in Our Stuff.', rule: { type: 'char', who: 'Moe', n: 3 } },
+    { id: 'itchy-scratchy-fan', tier: 'diamond', emoji: '\uD83D\uDC31', name: 'Itchy & Scratchy Fan', goal: 'Have 3 Itchy or Scratchy things in Our Stuff.', rule: { type: 'match', re: 'itchy|scratchy', n: 3 } },
+    { id: 'treehouse-terror', tier: 'diamond', emoji: '\uD83C\uDF83', name: 'Treehouse Terror', goal: 'Have 3 Treehouse of Horror or Halloween things.', rule: { type: 'match', re: 'treehouse|halloween|witch|vampire|werewolf|zombie|space mutant', n: 3 } },
+    { id: 'glow-gang', tier: 'diamond', emoji: '\uD83D\uDCAB', name: 'Glow Gang', goal: 'Have 3 glow-in-the-dark things.', rule: { type: 'match', re: 'glow', n: 3 } },
+    { id: 'hundred-yellow', tier: 'diamond', emoji: '\uD83D\uDCAF', name: 'Hundred Yellow Things', goal: 'Have 100 things in Our Stuff.', rule: { type: 'owned', n: 100 } },
+    { id: 'springfield-resident', tier: 'elite', emoji: '\uD83C\uDFD9\uFE0F', name: 'Springfield Resident', goal: 'Have things of 8 different characters.', rule: { type: 'chars', n: 8 } },
+    { id: 'simpson-family', tier: 'elite', emoji: '\uD83D\uDC6A', name: 'The Simpsons Family', goal: 'Have at least one Homer, Bart, Lisa, Marge and Maggie.', rule: { type: 'family', who: ['Homer', 'Bart', 'Lisa', 'Marge', 'Maggie'], n: 5 } },
+    { id: 'two-hundred-club', tier: 'elite', emoji: '\uD83C\uDFDB\uFE0F', name: 'Two Hundred Club', goal: 'Have 200 things in Our Stuff.', rule: { type: 'owned', n: 200 } },
+    { id: 'rare-rack', tier: 'elite', emoji: '\uD83D\uDC8E', name: 'Rare Rack', goal: 'Have 15 rare or limited things in Our Stuff.', rule: { type: 'rare', n: 15 } },
+    { id: 'week-of-wow', tier: 'elite', emoji: '\uD83D\uDD25', name: 'Week of Wow', goal: 'Keep a 7-day helper streak.', rule: { type: 'streak', n: 7 } },
+    { id: 'yellow-army', tier: 'champion', emoji: '\uD83C\uDF1F', name: 'Yellow Army', goal: 'Have 300 things in Our Stuff.', rule: { type: 'owned', n: 300 } },
+    { id: 'posted-parade', tier: 'champion', emoji: '\uD83D\uDCE2', name: 'Posted Parade', goal: 'Have 25 things already posted.', rule: { type: 'posted', n: 25 } },
+    { id: 'character-crowd', tier: 'champion', emoji: '\uD83C\uDFAD', name: 'Character Crowd', goal: 'Have things of 12 different characters.', rule: { type: 'chars', n: 12 } },
+    { id: 'shelf-empire', tier: 'unreal', emoji: '\uD83C\uDFF0', name: 'Shelf Empire', goal: 'Have 500 things in Our Stuff.', rule: { type: 'owned', n: 500 } },
+    { id: 'rarest-rare', tier: 'unreal', emoji: '\u2728', name: 'Rarest of the Rare', goal: 'Have 25 rare or limited things in Our Stuff.', rule: { type: 'rare', n: 25 } },
+    { id: 'legend-of-springfield', tier: 'mythic', emoji: '\uD83D\uDC51', name: 'Legend of Springfield', goal: 'Add 250 new items, earn 3,000 points, take 100 photos, find 80 hunt items, visit on 40 days, and keep a 7-day streak.', rule: { type: 'combo', parts: [
+      { type: 'items', n: 250 }, { type: 'earned', n: 3000 }, { type: 'photos', n: 100 }, { type: 'found', n: 80 }, { type: 'visits', n: 40 }, { type: 'streak', n: 7 }
+    ] } },
+    { id: 'springfield-pantheon', tier: 'mythic', emoji: '\uD83C\uDFDB\uFE0F', name: 'The Springfield Pantheon', goal: 'Collect every other badge.', rule: { type: 'all_badges' } }
   ];
+
   var BADGE_STARTERS = ['drop-in', 'wee-welcome'];
 
   function badgeBook() {
@@ -5109,7 +5166,8 @@ SCREENS.who = function () {
       scans: kidCount('kidScans'),
       searches: kidCount('kidSearches'),
       reads: kidCount('kidDadReads'),
-      cats: badgeCatCount()
+      cats: badgeCatCount(),
+      spins: kidCount('kidSpins')
     };
   }
   function ensureBadgeBaseline(stats) {
@@ -5138,26 +5196,122 @@ SCREENS.who = function () {
   function allBadgeDefs() {
     return BADGE_CATALOG.concat(badgeBook().custom || []);
   }
+  var KNOWN_CHARS_ = ['Homer','Bart','Lisa','Marge','Maggie','Krusty','Burns','Flanders','Milhouse','Ralph','Moe','Itchy','Scratchy','Apu','Wiggum','Smithers','Barney','Nelson','Skinner','Willie','Grampa','Abe','Kang','Kodos','Patty','Selma','Otto','Hibbert','Lovejoy','Todd','Rod','Lenny','Carl','Quimby','Edna','Martin','Duffman','Cletus','Jasper','Moleman','Grandpa','Hutz','McClure','Troy','Bob','Mel','Kent','Sherri','Terri','Snake','Brandine','Stu'];
+  function itemBlob_(it) { return [it.name, it.character, it.series, it.range, it.maker].join(' '); }
+  function badgeMatchCount_(re) {
+    var r;
+    try { r = new RegExp(re, 'i'); } catch (e) { return 0; }
+    return kidItems().filter(function (it) { return r.test(itemBlob_(it)); }).length;
+  }
+  function badgeCharCount_(who) {
+    var w = String(who || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (!w) return 0;
+    return badgeMatchCount_('\\b' + w + '\\b');
+  }
+  function badgeUniqueChars_() {
+    var seen = {};
+    kidItems().forEach(function (it) {
+      var blob = itemBlob_(it);
+      KNOWN_CHARS_.forEach(function (c) {
+        if (new RegExp('\\b' + c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(blob)) seen[c] = 1;
+      });
+      var ch = String(it.character || '').trim();
+      if (ch && !/^(unknown|other|-)$/i.test(ch)) seen[ch] = 1;
+    });
+    return Object.keys(seen).length;
+  }
+  function badgeUniqueField_(field) {
+    var o = {};
+    kidItems().forEach(function (it) {
+      var v = String(it[field] || '').trim();
+      if (v && !/^(unknown|other|-)$/i.test(v)) o[v] = 1;
+    });
+    return Object.keys(o).length;
+  }
+  function badgeJobCount_(rewards) {
+    var n = kidCount('kidJobs');
+    var rows = ((rewards && rewards.log) || []).concat((rewards && rewards.recent) || []);
+    var c = 0, seen = {};
+    rows.forEach(function (r) {
+      if (r && r.action === 'job') {
+        var k = String(r.when || '') + '|' + String(r.item || r.detail || '');
+        if (!seen[k]) { seen[k] = 1; c++; }
+      }
+    });
+    return Math.max(n, c);
+  }
+  function badgeHaveNeed_(rule, stats, book, rewards) {
+    var typ = (rule && rule.type) || 'manual';
+    var need = typ === 'starter' || typ === 'all_badges' ? 1 : Math.max(1, (rule && rule.n) || (rule && rule.parts && rule.parts.length) || 1);
+    var have = 0, base = book.baseline || {};
+    var inc = { photos: 1, found: 1, points: 1, jokes: 1, swipes: 1, scans: 1, searches: 1, reads: 1, cats: 1, items: 1, spins: 1 };
+    if (typ === 'starter') have = 1;
+    else if (typ === 'visits') have = (book.visits || []).length;
+    else if (typ === 'manual') have = 0;
+    else if (typ === 'jobs') have = badgeJobCount_(rewards);
+    else if (typ === 'earned') have = rewards && rewards.earned != null ? +rewards.earned || 0 : 0;
+    else if (typ === 'streak') have = rewards && rewards.streak != null ? +rewards.streak || 0 : 0;
+    else if (typ === 'owned') have = kidItems().length;
+    else if (typ === 'ranges') have = badgeCatCount();
+    else if (typ === 'photod') have = kidItems().filter(function (it) { return !!(it.ph || it.photoDate); }).length;
+    else if (typ === 'posted') have = kidItems().filter(function (it) { return !!it.posted; }).length;
+    else if (typ === 'series') have = badgeUniqueField_('series');
+    else if (typ === 'makers') have = badgeUniqueField_('maker');
+    else if (typ === 'rare') have = kidItems().filter(function (it) { return RARE_RE.test(itemBlob_(it)); }).length;
+    else if (typ === 'chars') have = badgeUniqueChars_();
+    else if (typ === 'char') have = badgeCharCount_(rule.who);
+    else if (typ === 'match') have = badgeMatchCount_(rule.re);
+    else if (typ === 'family') {
+      var who = rule.who || [];
+      need = Math.max(1, who.length || rule.n || 1);
+      have = who.filter(function (w) { return badgeCharCount_(w) >= 1; }).length;
+    } else if (typ === 'combo') {
+      var parts = rule.parts || [];
+      need = Math.max(1, parts.length);
+      have = 0;
+      parts.forEach(function (p) {
+        var pn = badgeHaveNeed_(p, stats, book, rewards);
+        if (pn.have >= pn.need) have++;
+      });
+    } else if (typ === 'all_badges') {
+      have = 0; need = 1;
+    } else if (inc[typ]) have = Math.max(0, (stats[typ] || 0) - (base[typ] || 0));
+    have = Math.min(have, need);
+    return { have: have, need: need };
+  }
   function computeBadges(hist, rewards) {
     var stats = currentBadgeStats(rewards);
     var book = ensureBadgeBaseline(stats);
-    var base = book.baseline || {};
-    return allBadgeDefs().map(function (def) {
+    var defs = allBadgeDefs();
+    var out = defs.map(function (def) {
       var typ = (def.rule && def.rule.type) || 'manual';
-      var need = typ === 'starter' ? 1 : Math.max(1, (def.rule && def.rule.n) || 1);
-      var have = 0;
-      if (typ === 'starter') have = 1;
-      else if (typ === 'visits') have = (book.visits || []).length;
-      else if (typ === 'manual') have = (book.earned && book.earned[def.id]) ? need : 0;
-      else have = Math.max(0, (stats[typ] || 0) - (base[typ] || 0));
-      have = Math.min(have, need);
-      var got = have >= need;
+      var hn = typ === 'all_badges' ? { have: 0, need: 1 } : badgeHaveNeed_(def.rule, stats, book, rewards);
+      if (typ === 'manual') hn.have = (book.earned && book.earned[def.id]) ? hn.need : 0;
+      var got = hn.have >= hn.need;
+      if (book.earned && book.earned[def.id]) got = true;
       if (book.override && book.override[def.id] === 0) got = false;
       else if (book.override && book.override[def.id] === 1) got = true;
-      if (got) have = need;
-      return { id: def.id, icon: def.emoji, name: def.name, desc: def.goal, tier: def.tier || 'bronze', have: have, need: need, got: got, custom: !!def.custom, rule: typ };
+      if (got) hn.have = hn.need;
+      return { id: def.id, icon: def.emoji, name: def.name, desc: def.goal, tier: def.tier || 'bronze', have: hn.have, need: hn.need, got: got, custom: !!def.custom, rule: typ };
     });
+    var catalogIds = {};
+    BADGE_CATALOG.forEach(function (d) { if (d.rule && d.rule.type !== 'all_badges') catalogIds[d.id] = 1; });
+    var needAll = 0, haveAll = 0;
+    out.forEach(function (b) { if (catalogIds[b.id]) { needAll++; if (b.got) haveAll++; } });
+    out.forEach(function (b, i) {
+      if (b.rule !== 'all_badges') return;
+      b.need = Math.max(1, needAll);
+      b.have = Math.min(haveAll, b.need);
+      var got = b.have >= b.need;
+      if (book.earned && book.earned[defs[i].id]) got = true;
+      if (book.override && book.override[defs[i].id] === 0) got = false;
+      else if (book.override && book.override[defs[i].id] === 1) got = true;
+      if (got) b.have = b.need;
+      b.got = got;
+    });
+    return out;
   }
+
   function badgesSeen() { try { return JSON.parse(LS.get('kidBadgesSeen') || 'null'); } catch (e) { return null; } }
   function ptsVal(r, key, fallback) {
     var n = parseInt(((r && r.points) || {})[key], 10);
@@ -5392,11 +5546,17 @@ SCREENS.who = function () {
     if (typ === 'reads') return 'Open a note or the letter from Dad';
     if (typ === 'searches') return 'Search for something on the home screen';
     if (typ === 'scans') return 'Scan a box';
+    if (typ === 'spins') return left === 1 ? 'Spin the wheel once' : 'Spin the wheel ' + left + ' more times';
+    if (typ === 'jobs') return left === 1 ? 'Finish 1 job and tell Dad' : 'Finish ' + left + ' more jobs and tell Dad';
+    if (typ === 'streak') return 'Help today to keep your streak going';
+    if (typ === 'earned') return left === 1 ? 'Earn 1 more point' : 'Earn ' + left + ' more points';
+    if (typ === 'owned' || typ === 'char' || typ === 'match' || typ === 'family' || typ === 'chars' || typ === 'rare' || typ === 'photod' || typ === 'posted' || typ === 'series' || typ === 'makers' || typ === 'ranges')
+      return b.desc || 'Look in Our Stuff';
     return b.desc || 'Have a go at this badge';
   }
   function nearestMissions(B, n) {
     n = n || 4;
-    var open = (B || []).filter(function (b) { return !b.got && b.rule && b.rule !== 'starter' && b.rule !== 'manual'; });
+    var open = (B || []).filter(function (b) { return !b.got && b.rule && b.rule !== 'starter' && b.rule !== 'manual' && b.rule !== 'all_badges' && b.rule !== 'combo' && b.tier !== 'mythic'; });
     open.sort(function (a, b) {
       var pa = a.need ? a.have / a.need : 0, pb = b.need ? b.have / b.need : 0;
       if (pb !== pa) return pb - pa;
@@ -5447,7 +5607,10 @@ SCREENS.who = function () {
     } else if (kind === 'searches') {
       var s = $('kidSearch');
       if (s) { try { s.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {} s.focus(); s.classList.add('missionPulse'); setTimeout(function () { s.classList.remove('missionPulse'); }, 1600); }
-    } else go('kidBadges');
+    } else if (kind === 'spins') go('wheel');
+    else if (kind === 'jobs' || kind === 'streak' || kind === 'earned') go('kidRewards');
+    else if (kind === 'owned' || kind === 'char' || kind === 'match' || kind === 'family' || kind === 'chars' || kind === 'rare' || kind === 'photod' || kind === 'posted' || kind === 'series' || kind === 'makers' || kind === 'ranges') go('kidStuff');
+    else go('kidBadges');
   }
   function checkNewBadges() {
     return Promise.all([
@@ -5456,6 +5619,10 @@ SCREENS.who = function () {
     ]).then(function (res) {
       var B = computeBadges(res[0], res[1]), got = B.filter(function (b) { return b.got; }), seen = badgesSeen(), first = !seen;
       seen = seen || [];
+      var book = badgeBook(), earnedChanged = false;
+      book.earned = book.earned || {};
+      got.forEach(function (b) { if (!book.earned[b.id]) { book.earned[b.id] = 1; earnedChanged = true; } });
+      if (earnedChanged) saveBadgeBook(book);
       var fresh = got.filter(function (b) { return seen.indexOf(b.id) < 0; });
       S.badges = B;
       if (!fresh.length || S.screen.indexOf('kid') !== 0) return B;
@@ -5478,11 +5645,19 @@ SCREENS.who = function () {
       done();
       var gotN = B.filter(function (b) { return b.got; }).length;
       var h = '<h1>\uD83C\uDFC6 My badges</h1><div class="card yel center badgeSum"><b style="font-size:26px">' + gotN + ' / ' + B.length + '</b> badges<br><small>' + (B.length - gotN) + ' still to get \u2014 keep collecting, snapping and hunting!</small></div>';
+      h += '<div class="badgeJump">';
       BADGE_TIER_ORDER.forEach(function (tier) {
         var rows = B.filter(function (b) { return b.tier === tier; });
         if (!rows.length) return;
         var g = rows.filter(function (b) { return b.got; }).length;
-        h += '<h2 class="badgeTier"><span class="tPip ' + tier + '"></span>' + esc(BADGE_TIER_NAME[tier]) + ' <span class="wantN">(' + g + '/' + rows.length + ')</span></h2>';
+        h += '<button type="button" class="badgeJumpBtn" data-act="badgeJump" data-tier="' + tier + '"><span class="tPip ' + tier + '"></span>' + esc(BADGE_TIER_NAME[tier]) + ' ' + g + '/' + rows.length + '</button>';
+      });
+      h += '</div>';
+      BADGE_TIER_ORDER.forEach(function (tier) {
+        var rows = B.filter(function (b) { return b.tier === tier; });
+        if (!rows.length) return;
+        var g = rows.filter(function (b) { return b.got; }).length;
+        h += '<h2 class="badgeTier" id="btier-' + tier + '"><span class="tPip ' + tier + '"></span>' + esc(BADGE_TIER_NAME[tier]) + ' <span class="wantN">(' + g + '/' + rows.length + ')</span></h2>';
         h += '<div class="badgeWall">' + rows.map(badgeTile).join('') + '</div>';
       });
       setMain(h);
@@ -5513,10 +5688,22 @@ SCREENS.who = function () {
       var B = computeBadges(res[0], res[1]);
       var got = {};
       B.forEach(function (b) { got[b.id] = b.got; });
-      var rows = allBadgeDefs().map(function (d) { return badgeEditorRow(d, !!got[d.id]); }).join('');
+      var rows = '';
+      BADGE_TIER_ORDER.forEach(function (tier) {
+        var defs = allBadgeDefs().filter(function (d) { return (d.tier || 'bronze') === tier && !d.custom; });
+        if (!defs.length) return;
+        rows += '<h2 class="badgeTier" id="bedit-' + tier + '"><span class="tPip ' + tier + '"></span>' + esc(BADGE_TIER_NAME[tier]) + ' <span class="wantN">(' + defs.length + ')</span></h2>';
+        rows += defs.map(function (d) { return badgeEditorRow(d, !!got[d.id]); }).join('');
+      });
+      var customs = allBadgeDefs().filter(function (d) { return d.custom; });
+      if (customs.length) {
+        rows += '<h2 class="badgeTier">Custom <span class="wantN">(' + customs.length + ')</span></h2>';
+        rows += customs.map(function (d) { return badgeEditorRow(d, !!got[d.id]); }).join('');
+      }
       setMain(backBtn() + '<h1>\uD83C\uDFC6 ' + esc(KID_ROLE) + '\u2019s badges</h1>' +
-        '<p class="hint">There are 50 ready-made badges, with two easy Bronze ones already earned. Add more any time. Changes save on this phone.</p>' +
+        '<p class="hint">There are ' + BADGE_CATALOG.length + ' ready-made badges, with two easy Bronze ones already earned. Add more any time. Changes save on this phone.</p>' +
         '<div class="rwList bdgEdit" id="bdgEdit">' + rows + '</div>' +
+
         '<p><button type="button" class="rwAdd" data-act="bdgAdd">+ Add badge</button></p>' +
         '<p class="center"><button class="btn main" data-act="bdgSave" id="bdgSaveBtn">Save</button></p>');
     }).catch(oops);
@@ -5799,6 +5986,10 @@ SCREENS.who = function () {
       case 'jobYes': decideJobUI(el.getAttribute('data-id'), true); break;
       case 'jobNo': decideJobUI(el.getAttribute('data-id'), false); break;
       case 'jobDone': requestJobUI(el.getAttribute('data-id')); break;
+      case 'badgeJump':
+        var tgt = document.getElementById('btier-' + (el.getAttribute('data-tier') || ''));
+        if (tgt) { try { tgt.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (eJ) {} }
+        break;
       case 'bdgAdd': addBadgeRow(); break;
       case 'bdgSave': saveBadgesUI(); break;
       case 'bdgRemove': (function () { var row = el.closest && el.closest('.bdgRow'); if (row && row.parentNode) row.parentNode.removeChild(row); var btn = $('bdgSaveBtn'); if (btn) { btn.textContent = 'Save'; btn.classList.remove('saved'); } })(); break;
